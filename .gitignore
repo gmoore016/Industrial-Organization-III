@@ -1,0 +1,5 @@
+*.out
+*.pdf
+*/raw/*
+*.gz
+*.csv
