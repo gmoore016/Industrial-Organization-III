@@ -1,5 +1,31 @@
 import tmdbsimple as tmdb
+import pandas as pd
 import csv
+
+# Read API key from file
+with open('tmdb.secret', 'r') as f:
+    api_key = f.read().strip()
+    tmdb.API_KEY = api_key
+
+# Get movie list from OpusData sample
+opusdata = pd.read_csv('../OpusData/MovieData.csv')
+
+print(opusdata.head())
+# Get name and year of first movie
+movie_name = opusdata['movie_name'][0]
+movie_year = opusdata['production_year'][0]
+
+search = tmdb.Search()
+response = search.movie(query=movie_name, year=movie_year)
+
+# Ensure only one result is found
+assert search.total_results > 0, "No results found for movie"
+assert search.total_results == 1, "Multiple results found for movie"
+
+movie_info = search.results[0]
+movie_id = movie_info['id']
+print(movie_info)
+kill
 
 TARANTINO = [466272, 24, 16869, 68718, 273248]
 PIXAR = [862, 585, 12, 9806, 10681]
@@ -12,10 +38,7 @@ TWINS = [
     399404, # Darkest Hour
 ]
 
-# Read API key from file
-with open('tmdb.secret', 'r') as f:
-    api_key = f.read().strip()
-    tmdb.API_KEY = api_key
+
 
 # Get movie descriptions
 def get_movie_descriptions(movie_ids):
