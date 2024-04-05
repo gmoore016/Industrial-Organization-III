@@ -4,6 +4,191 @@ import pandas as pd
 import string
 import csv
 
+YEAR_HANDCODES = movie_years = {
+    'romance and cigarettes': 2005,
+    'slow burn': 2005,
+    'red tails': 2012,
+    'august osage county': 2013,
+    'sin city a dame to kill for': 2014,
+    'edge of tomorrow': 2014,
+    'the last song': 2010,
+    'faster': 2010,
+    'valentines day': 2010,
+    'killers': 2010,
+    'the roommate': 2011,
+    'the beaver': 2011,
+    'the help': 2011,
+    'the eagle': 2011,
+    'no strings attached': 2011,
+    'hanna': 2011,
+    'winnie the pooh': 2011,
+    'sanctum': 2011,
+    'the tree of life': 2011,
+    'abduction': 2011,
+    'the rite': 2011,
+    'unknown': 2011,
+    'paul': 2011,
+    'the big year': 2011,
+    'red riding hood': 2011,
+    'the mechanic': 2011,
+    'super 8': 2011,
+    'upside down': 2012,
+    'priest': 2011,
+    'hop': 2011,
+    'battle los angeles': 2011,
+    'the dilemma': 2011,
+    'movie 43': 2013,
+    'lol': 2012,
+    'quartet': 2012,
+    'project x': 2012,
+    'chronicle': 2012,
+    'stoker': 2013,
+    'the possession': 2012,
+    'promised land': 2012,
+    'vamps': 2012,
+    'the apparition': 2012,
+    'red lights': 2012,
+    'lockout': 2012,
+    'ride along': 2014,
+    'the raven': 2012,
+    'lawless': 2012,
+    'the vow': 2012,
+    'the three stooges': 2012,
+    'the butler': 2013,
+    'safe': 2012,
+    'this is 40': 2012,
+    'parker': 2013, 
+    'riddick': 2013,
+    'the impossible': 2012,
+    'big miracle': 2012,
+    'taken 2': 2012,
+    'ted': 2012,
+    'the equalizer': 2014,
+    'the watch': 2012,
+    'lincoln': 2012,
+    'the dictator': 2012,
+    'the hunger games': 2012,
+    'mirror mirror': 2012,
+    'the campaign': 2012,
+    'life of pi': 2012,
+    'prometheus': 2012,
+    'world war z': 2013,
+    'battleship': 2012,
+    'the avengers': 2012,
+    'john carter': 2012,
+    'admission': 2013,
+    'evil dead': 2013,
+    'phantom': 2013,
+    'the last stand': 2013,
+    '42': 2013,
+    'the host': 2013,
+    '2 guns': 2013,
+    'pompeii': 2014,
+    'gravity': 2013,
+    'oblivion': 2013,
+    'the great gatsby': 2013,
+    'man of steel': 2013,
+    'neighbors': 2014,
+    'metegol': 2013,
+    'son of god': 2014,
+    'the lego movie': 2014,
+    'pixels': 2015,
+    'hercules': 2014,
+    'the amazing spiderman 2': 2014,
+    'burnt': 2015,
+    'little boy': 2015,
+    'poltergeist': 2015,
+    'aloha': 2015,
+    'planes fire and rescue': 2014,
+    'spy': 2015,
+    'ted 2': 2015,
+    'minions': 2015,
+    'the forest': 2016,
+    'shut in': 2016,
+    'lion': 2016,
+    'robinson crusoe': 2016,
+    'genius': 2016,
+    'me before you': 2016,
+    'kidnap': 2017,
+    'the boss': 2016,
+    'collide': 2016,
+    'criminal': 2016,
+    'the accountant': 2016,
+    'snowden': 2016,
+    'live by night': 2016,
+    'warcraft': 2016,
+    'the jungle book': 2016,
+    'finding dory': 2016,
+    'churchill': 2017,
+    'gotti': 2018,
+    'wish upon': 2017,
+    'wonder': 2017,
+    'chips': 2017,
+    'fist fight': 2017,
+    'rings': 2017,
+    'the house': 2017,
+    'the commuter': 2018,
+    'fifty shades darker': 2017,
+    'renegades': 2017,
+    'the lego batman movie': 2017,
+    'power rangers': 2017,
+    'logan': 2017,
+    'wonder woman': 2017,
+    'the mummy': 2017,
+    'guardians of the galaxy vol 2': 2017,
+    'book club': 2018,
+    'overboard': 2018,
+    'death wish': 2018,
+    'white boy rick': 2018,
+    'den of thieves': 2018,
+    'game night': 2018,
+    'the sisters brothers': 2018,
+    'pater rabbit': 2018,
+    'annihilation': 2018,
+    'the equalizer 2': 2018,
+    'the predator': 2018,
+    'tomb raider': 2018,
+    'bumblebee': 2018,
+    'rampage': 2018,
+    'skyscraper': 2018,
+    'the meg': 2018,
+    'miss bala': 2019,
+    'glass': 2019,
+    'serenity': 2019,
+    'leap year': 2010,
+    'scary movie 5': 2013,
+    'safe house': 2012,
+    'tomorrowland': 2015,
+    'peter rabbit': 2018,
+}
+
+
+NAME_HANDCODES = {
+    'chang jiang qi hao  cj7': 'cj7',
+    'stan helsing a parody': 'stan helsing',
+    'san suk si gin': 'shinjuku incident',
+    'shi yue wei cheng': 'bodyguards and assassins',
+    'les intouchables': 'the intouchables',
+    'lee daniels the butler': 'the butler',
+    'mr popperss penguins': 'mr poppers penguins',
+    'doctor seuss the lorax': 'the lorax',
+    'jin ling shi san chai': 'the flowers of war',
+    'san cheng ji': 'a tale of three cities',
+    'savva serdtse voyna': 'savva heart of the warrior',
+    'star wars ep vii the force awakens': 'star wars the force awakens',
+    'chai dan zhuanjia': 'shock wave',
+    'star wars ep viii the last jedi': 'star wars the last jedi',
+    'spiderman into the spiderverse 3d': 'spiderman into the spiderverse',
+    'walle': 'WALL·E',
+    'halloween 2': 'halloween ii',
+    'michael jacksons this is it': 'this is it',
+    'disneys a christmas carol': 'a christmas carol',
+    'nanjing nanjing': 'city of life and death',
+    'scary movie v': 'scary movie 5',
+    'planes fire and rescue': 'planes fire & rescue',
+}
+
+
 def clean_name(name):
     """
     Function to clean movie name
@@ -11,56 +196,19 @@ def clean_name(name):
     if not name:
         return None 
     
-    # Remove accents and asian characters
-    clean_name = unidecode(clean_name)
-    
     # Remove punctuation
-    clean_name = name.translate(str.maketrans('', '', string.punctuation))
+    cleaned_name = name.translate(str.maketrans('', '', string.punctuation))
+
+    # Remove accents and asian characters
+    cleaned_name = unidecode(cleaned_name)
 
     # Lowercase
-    clean_name = clean_name.lower()
+    cleaned_name = cleaned_name.lower()
 
-    # Handcoding some exceptions
-    if clean_name == 'chang jiang qi hao  cj7':
-        clean_name = 'cj7'
-    if clean_name == 'stan helsing a parody':
-        clean_name = 'stan helsing'
-    elif clean_name == 'san suk si gin':
-        clean_name = 'shinjuku incident'
-    elif clean_name == 'shi yue wei cheng':
-        clean_name = 'bodyguards and assassins'
-    elif clean_name == 'les intouchables':
-        clean_name = 'the intouchables'
-    elif clean_name == 'lee daniels the butler':
-        clean_name = 'the butler'
-    elif clean_name == 'mr popperss penguins':
-        clean_name = 'mr poppers penguins'
-    elif clean_name == 'doctor seuss the lorax':
-        clean_name = 'the lorax'
-    elif clean_name == 'jin ling shi san chai':
-        clean_name = 'the flowers of war'
-    elif clean_name == 'san cheng ji':
-        clean_name = 'a tale of three cities'
-    elif clean_name == 'savva serdtse voyna':
-        clean_name = 'savva heart of the warrior'
-    elif clean_name == 'star wars ep vii the force awakens':
-        clean_name = 'star wars the force awakens'
-    elif clean_name == 'chai dan zhuanjia':
-        clean_name = 'shock wave'
-    elif clean_name == 'star wars ep viii the last jedi':
-        clean_name = 'star wars the last jedi'
-    elif clean_name == 'spiderman into the spiderverse 3d':
-        clean_name = 'spiderman into the spiderverse'
-    elif clean_name == 'walle':
-        clean_name = 'WALL·E'
-    elif clean_name == 'halloween 2':
-        clean_name = 'halloween ii'
-    elif clean_name == 'michael jacksons this is it':
-        clean_name = 'this is it'
-    elif clean_name == 'disneys a christmas carol':
-        clean_name = 'a christmas carol'
+    if cleaned_name in NAME_HANDCODES:
+        cleaned_name = NAME_HANDCODES[cleaned_name]
 
-    return clean_name
+    return cleaned_name
 
 def get_movie_info(row):
     """
@@ -74,62 +222,24 @@ def get_movie_info(row):
 
     year = row['production_year']
 
-    if cleaned_name == 'romance and cigarettes':
-        year = 2005
-    if cleaned_name == 'slow burn':
-        year = 2005
-    if cleaned_name == 'red tails':
-        year = 2012
-    elif cleaned_name == 'august osage county':
-        year = 2013
-    elif cleaned_name == 'sin city a dame to kill for':
-        year = 2014
-    elif cleaned_name == 'edge of tomorrow':
-        year = 2014
-    elif cleaned_name == 'the last song':
-        year = 2010
-    elif cleaned_name == 'faster':
-        year = 2010
-    elif cleaned_name == "valentines day":
-        year = 2010
-    elif cleaned_name == 'killers':
-        year = 2010
-    elif cleaned_name == 'the roommate':
-        year = 2011
-    elif cleaned_name == 'the beaver':
-        year = 2011
-    elif cleaned_name == 'the help':
-        year = 2011
-    elif cleaned_name == 'the eagle':
-        year = 2011
-    elif cleaned_name == 'no strings attached':
-        year = 2011
-    elif cleaned_name == 'hanna':
-        year = 2011
-    elif cleaned_name == 'winnie the pooh':
-        year = 2011
-    elif cleaned_name == 'sanctum':
-        year = 2011
-    elif cleaned_name == 'the tree of life':
-        year = 2011
-    elif cleaned_name == 'abduction':
-        year = 2011
+    if cleaned_name in YEAR_HANDCODES:
+        year = YEAR_HANDCODES[cleaned_name]
 
     # Search for movie given name and year
     search = tmdb.Search()
-    search.movie(query=cleaned_name, primary_release_year=year)
+    search.movie(query=cleaned_name, year=year)
 
     if not search.total_results:
         #print(f"Movie {row['movie_name']} not found in year {row['production_year']}, trying previous year")
-        search.movie(query=cleaned_name, primary_release_year= year - 1)
+        search.movie(query=cleaned_name, year= year - 1)
 
     if not search.total_results:
         #print(f"Movie {row['movie_name']} not found in year {row['production_year']}, trying next year")
-        search.movie(query=cleaned_name, primary_release_year = year + 1)
+        search.movie(query=cleaned_name, year = year + 1)
 
     if not search.total_results:
         #print(f"Movie {row['movie_name']} not found in year {row['production_year']}, trying two years out")
-        search.movie(query=cleaned_name, primary_release_year = year + 2)
+        search.movie(query=cleaned_name, year = year + 2)
 
     # If no results
     if not search.total_results:
