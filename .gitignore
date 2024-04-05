@@ -3,3 +3,6 @@
 */raw/*
 *.gz
 *.csv
+*.secret
+*.png
+*.pkl
