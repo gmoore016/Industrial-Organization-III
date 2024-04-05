@@ -160,6 +160,7 @@ YEAR_HANDCODES = movie_years = {
     'safe house': 2012,
     'tomorrowland': 2015,
     'peter rabbit': 2018,
+    'warrior': 2011,
 }
 
 
@@ -230,15 +231,12 @@ def get_movie_info(row):
     search.movie(query=cleaned_name, year=year)
 
     if not search.total_results:
-        #print(f"Movie {row['movie_name']} not found in year {row['production_year']}, trying previous year")
         search.movie(query=cleaned_name, year= year - 1)
 
     if not search.total_results:
-        #print(f"Movie {row['movie_name']} not found in year {row['production_year']}, trying next year")
         search.movie(query=cleaned_name, year = year + 1)
 
     if not search.total_results:
-        #print(f"Movie {row['movie_name']} not found in year {row['production_year']}, trying two years out")
         search.movie(query=cleaned_name, year = year + 2)
 
     # If no results
@@ -247,7 +245,6 @@ def get_movie_info(row):
         return None
 
     return search.results[0]
-
 
 # Read API key from file
 with open('tmdb.secret', 'r') as f:
@@ -260,6 +257,7 @@ opusdata = pd.read_csv('../OpusData/MovieData.csv')
 # Get movie info for each movie
 query_results = opusdata.apply(get_movie_info, axis=1)
 
+# Parse TMDB info into dataframe
 opusdata['tmdb_id'] = [query_result['id'] if query_result else None for query_result in query_results]
 opusdata['tmdb_name'] = [query_result['title'] if query_result else None for query_result in query_results]
 opusdata['tmdb_description'] = [query_result['overview'] if query_result else None for query_result in query_results]
