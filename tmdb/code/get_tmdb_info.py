@@ -161,6 +161,7 @@ YEAR_HANDCODES = movie_years = {
     'tomorrowland': 2015,
     'peter rabbit': 2018,
     'warrior': 2011,
+    'mama': 2013,
 }
 
 
