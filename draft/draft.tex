@@ -1,11 +1,106 @@
 \documentclass{article}
 
 \usepackage{geometry}
+\usepackage{graphicx}
+
+\author{Gideon Moore}
+\title{Mid-Quarter Check-In}
+\date{May 1, 2024}
 
 \begin{document}
 
+\maketitle
 
+\section{Overview}
 
+Since our last meeting, I have collected data from OpusData, Google Trends, and TMDB about a sample of major movies from 2006 to 2018. I have managed to link these data together, such that I can connect embeddings of movie descriptions from TMDB to search interest from Google Trends in the period around movie publication dates taken from OpusData. 
 
+My text embedding algorithm seems to work as-expected; without supervision, it manages to cluster movies by genre tag (as taken from TMDB). Moreover, the cross-genre clusters it produces are reasonable--for example, ``action'' and ``adventure'' movies are very close, whereas ``romantic comedy'' movies are on the other side of the chart. 
+
+Following Magnolfi et al. (2022), I estimated cross-elasticities of demand using a log-linear demand model. Cross-elasticity is estimated as a cubic function of normalized Euclidean distance in 6-space. The results are encouraging: on the support of the data, the cross-elasticities are monotonically decreasing in distance, as expected.
+
+I have a few next steps in mind, but am very open to other suggestions:
+\begin{itemize}
+    \item At the moment I estimate cross-elasticities only for movies published in 2007. I intend to extend this to the whole time span, but under my currend specification movie distance computation is quadratic in the number of movies. With some clever dynamic programming this should be much more tractable, but I haven't implemented this yet.
+    \item For now I am using 5,012-dimensional text embeddings reduced to 6 dimensions using PCA. Since I created these embeddings, OpenAI has released a new version of their model which allows for custom embedding dimensions. I intend to use this feature to create 6-dimensional embeddings directly, rather than using PCA.
+    \item My Google Trends data is incomplete, as they've blocked my IP. While I anticipate regaining access at some point, I also think this is the weakest part of my data product at the moment. Trends numbers are sort of ``mushy''--what does a 10\% decline in search interest mean? How does interest in one movie compare to another?
+    \item At some point I should speak to Amar Venugopal, a third-year PhD student in the metrics group. He is currently researching causal inference using text data; now that I have something like an intermediate result, I think I would feel comfortable asking for his input. 
+\end{itemize}
+
+\section{Motivation}
+
+As we've discussed previously, I am generally underwhelmed be existing text- and image-data for demand estimation methods. I believe the closest analog to my project is Compiani et al. (2023); however, as mentioned at our previous meeting, their team generally uses more rudimentary text analysis tools relative to the frontier. Moreover, their emphasis is primarily on image data anyway. I think their setting is also quite a bit less conducive to identifying parameters of interest; they examine cross-elasticities of demand for various consumer electronics on Amazon. However, they treat prices and characteristics as exogeneous. Clearly this is not reasonable: the Kindle 7 receives a price drop with the introduction of the Kindle 8, and its features are almost certainly a subset of its successor's. In contrast, the movie industry resolves both of these problems: uniform pricing norms mean we can treat prices as exogeneously constant, and movies in theaters at the same time generally had scripts and production approved well in advance of any point where they could have observed the other movie (see: twin movies). 
+
+Magnolfi et al. (2022) has been very helpful for thinking about demand estimation using embeddings. While triplet embeddings are nice to have, I think text embeddings are generally preferrable: you don't need to pay external judges to produce triplets, and triplets are not subject to questions about the survey population. So long as the researcher has non-trivial (probably > 1 sentence) text, whether from an API or scraped from the web, embeddings should produce meaningful approximations of product characteristics. 
+
+\section{Datasets}
+
+\subsection{OpusData}
+
+OpusData is the vendor behind ``The Numbers.com,'' the premier box office data provider. I solicited them for weekly box office returns. While I did not want to pay for their data (yet), they also provided a free sample of movies meeting the following criteria:
+\begin{itemize}
+    \item Production year between 2006 and 2018
+    \item Production budget at least \$10 million
+    \item Figures available for box office receipts
+\end{itemize}
+
+Per our discussion at the start of the term, none of these appear to be obviously of concern for selection into the sample. Thus, I have used this sample as the spine to attach other data. 
+
+\subsection{Google Trends}
+
+In the absence of box office data, I have used Google Trends to measure search interest in movies. After cleaning movie titles from OpusData, I query ``[movie name] movie'' to get a time series of search interest. I performed these queries using PyTrends, which worked well for ~1,000 movies, but have since been IP blocked. Thus, I will continue to work only with this sample for now. 
+
+This measure is somewhat odd because interest is normalized out of 100. Thus, we know how well a movie does \emph{relative to its earlier self,} but not relative to other movies. Given we are estimating a log-linear demand model (and thus working in percentages) I think this should be fine, but it is worth noting. This will be more of an issue if Google's normalization is nonlinear; this I don't have an answer for. Similarly I only have three years of data for each movie; I retrieve data for the year before, during, and after the movie's release, and set all other weeks to zero. 
+
+The other issue with search interest relative to box office receipts is that we do not observe the release date directly. However, I proxy for the week of release using the week with highest interest (breaking ties with the earlier week). See the figure below for an example of this process for \textit{The Dark Knight}, plotting the release date from Wikipedia on the chart in red:
+
+\begin{center}
+    \includegraphics[width=.6\textwidth]{../google_trends/output/dark_knight.png}
+\end{center}
+
+\subsection{TMDB}
+
+I'll admit that IMDB is probably the ``preferred'' source for movie data, but their API costs tens of thousands of dollars. On the other hand, the community-driven TMDB API is free. Using their search interface, I query the name of each movie from the OpusData sample in order to get the description from TMDB. There are generally quite concise, but I think they should carry enough information to be meaningful. For example, here is the description for \textit{The Dark Knight}:
+
+\begin{quote}
+    Batman raises the stakes in his war on crime. With the help of Lt. Jim Gordon and District Attorney Harvey Dent, Batman sets out to dismantle the remaining criminal organizations that plague the streets. The partnership proves to be effective, but they soon find themselves prey to a reign of chaos unleashed by a rising criminal mastermind known to the terrified citizens of Gotham as the Joker.
+\end{quote}
+
+Indeed, short texts like this are where embeddings do particularly well relative to tradition text-to-data methods: whereas a bag-of-words model would struggle to capture the meaning of this text, embeddings can leverage their under-the-hood training corpus to understand the meaning of this short snippet. 
+
+\section{Initial Results}
+
+\subsection{Embeddings}
+
+Before getting to the cross-elasticity estimates, first I should demonstrate that the OpenAI embeddings are capturing something ``meaningful.'' Below, find a t-SNE plot of the embeddings for the movies in the sample. I have colored the points by the genre of the movie, as provided by TMDB.
+
+\begin{center}
+    \includegraphics[width=\textwidth]{../tmdb/plots/tsne_genres.png}
+\end{center}
+
+You can see that movies within a genre appear to cluster together. Moreover, similar genres appear to group: see the cloud of ``Action/Adventure'' to the bottom-right, and the intersection of ``Horror'' and `Thriller'' in the bottom-left. Note certain colors have multiple meanings superimposed (e.g. green is both Drama and Documentary); if I wish to show all movies on the plot, there is a limited pallette to choose from, and wanted to present \emph{all} the movies to show that even in the noisiest specification we can see the clusters.
+
+\subsection{Cross-Elasticities}
+
+Creating the cross-movie distances is quite intensive since the computations grow quadratically in the number of movies, so for now I have limited only to movies published in 2007. For the full analysis I will likely push the analysis to Sherlock rather than running it on my laptop. 
+
+Following Magnolfi et al. (2022), I use a log-linear demand model dependent on a cubic in normalized Euclidean distance between goods. Embeddings are reduced from 5,012 dimensions to 6 using PCA to follow the authors; just this month, OpenAI has released an updated model which allows embeddings of custom dimensions, so for the final version I will likely use a direct six-dimensional embedding rather than PCA. The final regression specification is:
+
+$$\ln(Interest_{jt}) = \alpha_j + \alpha_t + \sum_{k \neq j} \left(\gamma_1 d_{jk} + \gamma_2 d_{jk}^2 + \gamma_3 d_{jk}^3\right) + \varepsilon_{jt}$$
+
+Note here we have omitted both the own- and cross-price terms, as uniform pricing in the movie industry means that all the price terms reduce to constants and are absorbed into the intercept term. This is estimated using GMM, but I have not yet implemented the standard errors. 
+
+The cross-price elasticity function is given in the figure below:
+\begin{center}
+    \includegraphics[width=.6\textwidth]{../elasticity_estimate/output/elasticity_function.png}
+\end{center}
+
+While initially I was concerned that the cross-elasticity function was not monotone, on inspecting the data I found that the support of the distribution was predominantly between 0.3 and 0.7: precisely the monotonically declining part of the function:
+
+\begin{center}
+    \includegraphics[width=.6\textwidth]{../elasticity_estimate/output/histogram_distances.png}
+\end{center}
+
+Thus, these results are quite encouraging to me: the cross-elasticities are correct-signed and--on the support of the data--monotonically declining in distance, as expected. 
 
 \end{document}

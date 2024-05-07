@@ -60,12 +60,14 @@ google_trends['ln_interest'] = google_trends.groupby('month')['ln_interest'].tra
 # De-Mean log interest within a movie
 google_trends['ln_interest'] = google_trends.groupby('movie_id')['ln_interest'].transform(lambda x: x - x.mean())
 
+
+
 # Limit sample to movies with trends and embeddings
 movies_with_trends = google_trends['movie_id'].unique()
 movies_with_embeddings = embeddings['movie_id'].unique()
 movies = np.intersect1d(movies_with_trends, movies_with_embeddings)
 
-
+print(f'Number of movies satisfying all criteria: {len(movies)}')
 
 google_trends = google_trends[google_trends['movie_id'].isin(movies)]
 embeddings = embeddings[embeddings['movie_id'].isin(movies)]
@@ -170,23 +172,37 @@ empirical_distances = []
 for observation in observations:
     empirical_distances.extend(observation.distances)
 
+# Get bottom and top decile
+distances = np.array(empirical_distances)
+bottom_decile = np.percentile(distances, 10)
+top_decile = np.percentile(distances, 90)
+median = np.percentile(distances, 50)
+
 plt.hist(empirical_distances, bins=20)
 plt.xlabel('Distance')
 plt.ylabel('Frequency')
 plt.title('Histogram of Distances')
-plt.show()
+
+plt.axvline(x=bottom_decile, color='r', linestyle='--')
+plt.axvline(x=top_decile, color='r', linestyle='--')
+plt.axvline(x=median, color='g', linestyle='--')
+
+# Add labels
+plt.text(bottom_decile, 0, 'Bottom Decile', rotation=90)
+plt.text(top_decile, 0, 'Top Decile', rotation=90)
+plt.text(median, 0, 'Median', rotation=90)
+
+plt.savefig('output/histogram_distances.png')
+
+
+# New plot
+plt.figure()
 
 # Plot elasticity function
 plt.plot(distance_grid, elasticity)
 plt.xlabel('Distance')
 plt.ylabel('Elasticity')
 plt.title('Estimated Elasticity Function')
-
-# Get bottom and top decile
-distances = np.array(empirical_distances)
-bottom_decile = np.percentile(distances, 10)
-top_decile = np.percentile(distances, 90)
-median = np.percentile(distances, 50)
 
 # Add lines for median and top/bottom deciles
 plt.axvline(x=bottom_decile, color='r', linestyle='--')
@@ -198,5 +214,5 @@ plt.text(bottom_decile, 0, 'Bottom Decile', rotation=90)
 plt.text(top_decile, 0, 'Top Decile', rotation=90)
 plt.text(median, 0, 'Median', rotation=90)
 
-plt.show()
+plt.savefig('output/elasticity_function.png')
 
