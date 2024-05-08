@@ -1,4 +1,4 @@
-from openai import OpenAI
+from openai import OpenAI, BadRequestError
 import pandas as pd
 import pickle
 from tqdm import tqdm
@@ -20,16 +20,26 @@ def get_embedding(description):
         print("No description!")
         return None
 
-    response = client.embeddings.create(
-        input=[description],
-        model="text-embedding-3-small"
-    )
+    try:
+        response = client.embeddings.create(
+            input=[description],
+            model="text-embedding-3-small",
+            dimensions=6
+        )
+    except:
+        print("Could not process description!")
+        print("Description:", description)
+        raise
 
     return response
 
 # Get descriptions
 movie_data = pd.read_csv('descriptions/movie_descriptions.csv', encoding="ISO-8859-1")
 
+# Drop if descriptions are null
+movie_data = movie_data.dropna(subset=['tmdb_description'])
+
+# Embed descriptions
 movie_data['embedding'] = movie_data['tmdb_description'].progress_apply(get_embedding)
 
 with open('embeddings/movie_descriptions.pkl', 'wb') as f:
