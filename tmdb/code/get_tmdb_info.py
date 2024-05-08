@@ -10,8 +10,8 @@ def get_movie_info(row):
     Function to apply to each row in the movie data
     Takes info from that row and returns the movie info from TMDB
     """
-    cleaned_name = row['cleaned_name']
-    year = row['production_year']
+    cleaned_name = row['Title']
+    year = row['year']
 
     # Search for movie given name and year
     search = tmdb.Search()
@@ -38,21 +38,31 @@ with open('tmdb.secret', 'r') as f:
     api_key = f.read().strip()
     tmdb.API_KEY = api_key
 
-opusdata = pd.read_csv('../OpusData/output/opus_cleaned.csv')
+gurudata = pd.read_csv('../guru/data/weekly_sales.csv')
+
+# Convert Date to datetime
+gurudata['Date'] = pd.to_datetime(gurudata['Date'])
+
+# Get the first date of each movie
+movies = gurudata.groupby('Title')['Date'].min().reset_index()
+movies['year'] = movies['Date'].dt.year
+
+# Merge premier onto movie data
 
 # Get movie info for each movie
-query_results = opusdata.apply(get_movie_info, axis=1)
+query_results = movies.apply(get_movie_info, axis=1)
 
 # Parse TMDB info into dataframe
-opusdata['tmdb_id'] = [query_result['id'] if query_result else None for query_result in query_results]
-opusdata['tmdb_name'] = [query_result['title'] if query_result else None for query_result in query_results]
-opusdata['tmdb_description'] = [query_result['overview'] if query_result else None for query_result in query_results]
-opusdata['tmdb_release_date'] = [query_result['release_date'] if query_result else None for query_result in query_results]
-opusdata['tmdb_genres'] = [query_result['genre_ids'] if query_result else None for query_result in query_results]
-opusdata['tmdb_language'] = [query_result['original_language'] if query_result else None for query_result in query_results]
+movies = movies.copy()
+movies['tmdb_id'] = [query_result['id'] if query_result else None for query_result in query_results]
+movies['tmdb_name'] = [query_result['title'] if query_result else None for query_result in query_results]
+movies['tmdb_description'] = [query_result['overview'] if query_result else None for query_result in query_results]
+movies['tmdb_release_date'] = [query_result['release_date'] if query_result else None for query_result in query_results]
+movies['tmdb_genres'] = [query_result['genre_ids'] if query_result else None for query_result in query_results]
+movies['tmdb_language'] = [query_result['original_language'] if query_result else None for query_result in query_results]
 
 # Flag those where no results found
-opusdata['no_results'] = opusdata['tmdb_id'].isnull()
+movies['no_results'] = movies['tmdb_id'].isnull()
 
 # Write descriptions to file
-opusdata.to_csv('descriptions/movie_descriptions.csv', index=False)
+movies.to_csv('descriptions/movie_descriptions.csv', index=False)
