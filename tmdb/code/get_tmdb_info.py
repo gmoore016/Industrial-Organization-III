@@ -3,6 +3,10 @@ from unidecode import unidecode
 import pandas as pd
 import string
 import csv
+from tqdm import tqdm
+import re
+
+PAREN_REGEX = re.compile(r'\([^)]*\)')
 
 
 def get_movie_info(row):
@@ -13,18 +17,52 @@ def get_movie_info(row):
     cleaned_name = row['Title']
     year = row['year']
 
+    # Flag rereleases to change search year constraints
+    rerelease = False
+    if "RE" in cleaned_name or "rerelease" in cleaned_name.lower() or "reissue" in cleaned_name.lower() or "re-release" in cleaned_name.lower():
+        cleaned_name = cleaned_name.replace("RE", "")
+        cleaned_name = cleaned_name.replace("rerelease", "")
+        cleaned_name = cleaned_name.replace("reissue", "")
+        cleaned_name = cleaned_name.replace("re-release", "")
+        rerelease = True
+
+    # Remove anything in parentheses
+    cleaned_name = re.sub(PAREN_REGEX, '', cleaned_name)
+
+    # Remove anything after colon
+    cleaned_name = cleaned_name.split(":")[0]
+
+    # Remove accents
+    cleaned_name = unidecode(cleaned_name)
+
+    # Remove punctuation
+    cleaned_name = cleaned_name.translate(str.maketrans('', '', string.punctuation))
+
+    # Need to wait until after above to successfully flag RE
+    cleaned_name = cleaned_name.lower()
+    if "imax" in cleaned_name:
+        cleaned_name = cleaned_name.replace(" imax", " ")
+    cleaned_name = cleaned_name.replace(" pt", " Part")
+                                        
+    
+    
+    
+
     # Search for movie given name and year
     search = tmdb.Search()
-    search.movie(query=cleaned_name, year=year)
+    if rerelease:
+        search.movie(query=cleaned_name)
+    else:
+        search.movie(query=cleaned_name, year=year)
 
-    if not search.total_results:
-        search.movie(query=cleaned_name, year= year - 1)
+        if not search.total_results:
+            search.movie(query=cleaned_name, year= year - 1)
 
-    if not search.total_results:
-        search.movie(query=cleaned_name, year = year + 1)
+        if not search.total_results:
+            search.movie(query=cleaned_name, year = year + 1)
 
-    if not search.total_results:
-        search.movie(query=cleaned_name, year = year + 2)
+        if not search.total_results:
+            search.movie(query=cleaned_name, year = year + 2)
 
     # If no results
     if not search.total_results:
@@ -50,7 +88,8 @@ movies['year'] = movies['Date'].dt.year
 # Merge premier onto movie data
 
 # Get movie info for each movie
-query_results = movies.apply(get_movie_info, axis=1)
+tqdm.pandas()
+query_results = movies.progress_apply(get_movie_info, axis=1)
 
 # Parse TMDB info into dataframe
 movies = movies.copy()
