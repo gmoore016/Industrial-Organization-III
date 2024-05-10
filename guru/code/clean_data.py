@@ -6,6 +6,8 @@ import progressbar
 import string
 from unidecode import unidecode
 import numpy as np
+import datetime
+import hashlib
 
 PAREN_REGEX = re.compile(r'\([^)]*\)')
 table_regex = re.compile(r"Top\s*5")
@@ -110,7 +112,7 @@ def clean_title(cleaned_name):
     cleaned_name = re.sub(PAREN_REGEX, '', cleaned_name)
 
     # Remove anything after colon
-    cleaned_name = cleaned_name.split(":")[0]
+    #cleaned_name = cleaned_name.split(":")[0]
 
     # Remove accents
     cleaned_name = unidecode(cleaned_name)
@@ -126,22 +128,39 @@ def clean_title(cleaned_name):
 
     return cleaned_name, rerelease
 
-# Read the data
-filenames = os.listdir("html")
-dfs = []
-for filename in progressbar.progressbar(filenames):
+def parse_file(filename):
     try:
-        dfs.append(parse_html(filename))
+        return parse_html(filename)
+
     except ValueError:
         print(f"Failed to parse {filename}, No Tables")
+    except KeyboardInterrupt:
+        print("Interrupted")
+        raise
     except:
         print(f"Failed to parse {filename}")
         raise
+
+# Read the data
+filenames = os.listdir("html")
+
+#with ThreadPoolExecutor() as executor:
+#    dfs = list(executor.map(parse_file, filenames))
+dfs = []
+for filename in progressbar.progressbar(filenames):
+    dfs.append(parse_file(filename))    
 
 df = pd.concat(dfs)
 
 df['Theaters'] = df['Theaters'].astype(pd.Int64Dtype())
 df['Weeks'] = df['Weeks'].astype(pd.Int64Dtype())
+
+# Hand-correct a duplicate movie
+# I'm fairly sure this is right; the 1998-03-23 releases duplicate The Apostle, one on week 4 the other on week 14
+# Going to the previous week (http://www.boxofficeguru.com/031698.htm) we can see that the Apostle is on week 13, so the week 4
+# release is the error. Similarly, we can see there are 3 movies on week 3. 
+# Only one, Caught Up, has the same distributor as the week 4 release of The Apostle
+df.loc[(df['Title'] == 'The Apostle') & (df['Date'] == datetime.datetime.strptime('1998-03-23', "%Y-%m-%d")) & (df['Distributor'] == 'Live'), 'Title'] = "Caught Up"
 
 cleaning_content = [clean_title(title) for title in df["Title"]]
 results = [content for content in cleaning_content]
@@ -150,13 +169,12 @@ df['Clean Title'] = [content[0] for content in cleaning_content]
 df['Rerelease'] = [content[1] for content in cleaning_content]
 
 # Hash clean title into an ID
-df['movie_id'] = df['Clean Title'].apply(hash)
+df['movie_id'] = df['Clean Title'].apply(lambda x: hashlib.md5(x.encode(), usedforsecurity=False).hexdigest())
 
 # Disambiguate movies with the same name while computing movie spell lengths
 max_spell_length = 10000
 counter = 0
 while max_spell_length > 60:
-    print("Iteration: ", counter)
     wide_release_dates = df[df['Theaters'] >= 600].groupby('movie_id')['Date'].min()
     # Rename the column
     wide_release_dates = wide_release_dates.reset_index()
@@ -174,14 +192,19 @@ while max_spell_length > 60:
     df['weeks_since_release'] = (df['Date'] - df['Date_wide']).dt.days // 7
 
     # If a movie has been out for more than 50 weeks, it's likely a different movie with the same name
-    # Thus, flag title with counter
-    df['movie_id'] = np.where(df['weeks_since_release'] > 60, df['movie_id'] + 1, df['movie_id'])
+    # Thus, needs a new id
+    df['movie_id'] = np.where(
+        df['weeks_since_release'] > 60, 
+        df['movie_id'] + "_" + str(counter),
+        df['movie_id']
+    )
 
     max_spell_length = df['weeks_since_release'].max()
-    counter += 1
     
     if max_spell_length > 60:
         df = df.drop('Date_wide', axis=1)
+
+    counter += 1
 
 # Rename Date_wide to Wide Release Date
 df = df.rename(columns={"Date_wide": "Wide Release Date"})
@@ -189,13 +212,55 @@ df = df.rename(columns={"Date_wide": "Wide Release Date"})
 # With the data cleaned, we can parse it into something normalized
 weekly_sales = df[["movie_id", "Date", "Week Sales", "Theaters", "Weeks"]]
 weekly_sales = weekly_sales.set_index(["movie_id", "Date"])
+
+# Print duplicates in the index
 assert weekly_sales.index.is_unique
 weekly_sales.to_parquet("data/weekly_sales.parquet")
 
 # Similarly we can make our movies table
 movies = df[["movie_id", "Clean Title", "Distributor", "Rerelease", "Wide Release Date"]]
+
+# Fix distribution errors
+# Replace multiple values in the 'Distributor' column
+replace_dict = {
+    "Dream Works": "DreamWorks",
+    "Univesal": "Universal",  # Typo corrected to "Universal"
+    "MGM/UA": "MGM",
+    "WB": "Warner Bros.",
+    "Amazon MGM": "MGM"
+}
+movies = movies.replace({"Distributor": replace_dict})
+
+# Selective replacements using loc accessor
+movies.loc[movies['Distributor'] == "20th Century", 'Distributor'] = "Fox"
+movies.loc[movies['Distributor'] == "Goldwyn / Roadside", 'Distributor'] = "Goldwyn/Roadside"
+
+# Additional selective replacements
+replacement_dict = {
+    'tron legacy': "Disney",
+    'tangled': "Disney",
+    'rollerball': "MGM",
+    'blacklight': "Briarcliff",
+    'the cursed': "LD",
+    'shes the man': "Paramount",
+    'lucky number slevin': "Weinstein Co.",
+    'scream 4': "Weinstein Co.",
+    'the conspirator': "Roadside Attr.",
+    'over the hedge': "Paramount",
+    'valerian and the city of a thousand planets': "STX",
+    'sinister': "Lionsgate",
+    "return to me": "MGM"
+}
+
+for title, distributor in replacement_dict.items():
+    movies.loc[movies['Clean Title'] == title, 'Distributor'] = distributor
+
+# Date-specific replacement
+movies.loc[(movies['Clean Title'] == 'shaft') & (movies['Wide Release Date'] == datetime.datetime.strptime('2019-06-17', "%Y-%m-%d")), 'Distributor'] = "Warner Bros."
+
 movies = movies.drop_duplicates()
 movies = movies.set_index("movie_id")
+print(movies[movies.index.duplicated()])
+movies.to_csv("data/movies.csv")
 assert movies.index.is_unique
-print(movies.head(17))
 movies.to_parquet("data/movies.parquet")
