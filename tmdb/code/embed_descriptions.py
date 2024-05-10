@@ -24,7 +24,6 @@ def get_embedding(description):
         response = client.embeddings.create(
             input=[description],
             model="text-embedding-3-small",
-            dimensions=6
         )
     except:
         print("Could not process description!")
