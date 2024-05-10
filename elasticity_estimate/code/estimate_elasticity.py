@@ -43,38 +43,6 @@ print(f"Missing log earnings: {guru['ln_earnings'].isnull().sum()}")
 guru = guru.dropna(subset=['Theaters', 'ln_earnings'])
 guru = guru.drop("Weeks", axis=1)
 
-# Disambiguate movies with the same name while computing movie spell lengths
-max_spell_length = 10000
-counter = 0
-while max_spell_length > 60:
-    print("Iteration: ", counter)
-    wide_release_dates = guru[guru['Theaters'] >= 600].groupby('Clean Title')['Date'].min()
-    # Rename the column
-    wide_release_dates = wide_release_dates.reset_index()
-    wide_release_dates.columns = ['Clean Title', 'Date_wide']
-
-    # Drop any showings before the wide release
-    guru = guru.merge(
-        wide_release_dates, 
-        on='Clean Title',
-    )
-    
-    guru = guru[guru['Date'] >= guru['Date_wide']]
-
-    # Compute weeks since wide release
-    guru['weeks_since_release'] = (guru['Date'] - guru['Date_wide']).dt.days // 7
-
-    # If a movie has been out for more than 50 weeks, it's likely a different movie with the same name
-    # Thus, flag title with counter
-    guru['Clean Title'] = np.where(guru['weeks_since_release'] > 60, guru['Clean Title'] + f'_{counter}', guru['Clean Title'])
-
-    max_spell_length = guru['weeks_since_release'].max()
-    counter += 1
-    
-    # Drop wide release date
-    print(guru.head())
-    print(guru.columns)
-    guru = guru.drop('Date_wide', axis=1)
 
 # Histogram of weeks since release
 plt.hist(guru['weeks_since_release'], bins=20)

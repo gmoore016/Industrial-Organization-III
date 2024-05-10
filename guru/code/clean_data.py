@@ -5,6 +5,7 @@ import re
 import progressbar
 import string
 from unidecode import unidecode
+import numpy as np
 
 PAREN_REGEX = re.compile(r'\([^)]*\)')
 table_regex = re.compile(r"Top\s*5")
@@ -142,20 +143,59 @@ df = pd.concat(dfs)
 df['Theaters'] = df['Theaters'].astype(pd.Int64Dtype())
 df['Weeks'] = df['Weeks'].astype(pd.Int64Dtype())
 
+cleaning_content = [clean_title(title) for title in df["Title"]]
+results = [content for content in cleaning_content]
+
+df['Clean Title'] = [content[0] for content in cleaning_content]
+df['Rerelease'] = [content[1] for content in cleaning_content]
+
+# Hash clean title into an ID
+df['movie_id'] = df['Clean Title'].apply(hash)
+
+# Disambiguate movies with the same name while computing movie spell lengths
+max_spell_length = 10000
+counter = 0
+while max_spell_length > 60:
+    print("Iteration: ", counter)
+    wide_release_dates = df[df['Theaters'] >= 600].groupby('movie_id')['Date'].min()
+    # Rename the column
+    wide_release_dates = wide_release_dates.reset_index()
+    wide_release_dates.columns = ['movie_id', 'Date_wide']
+
+    # Drop any showings before the wide release
+    df = df.merge(
+        wide_release_dates, 
+        on='movie_id',
+    )
+    
+    df = df[df['Date'] >= df['Date_wide']]
+
+    # Compute weeks since wide release
+    df['weeks_since_release'] = (df['Date'] - df['Date_wide']).dt.days // 7
+
+    # If a movie has been out for more than 50 weeks, it's likely a different movie with the same name
+    # Thus, flag title with counter
+    df['movie_id'] = np.where(df['weeks_since_release'] > 60, df['movie_id'] + 1, df['movie_id'])
+
+    max_spell_length = df['weeks_since_release'].max()
+    counter += 1
+    
+    if max_spell_length > 60:
+        df = df.drop('Date_wide', axis=1)
+
+# Rename Date_wide to Wide Release Date
+df = df.rename(columns={"Date_wide": "Wide Release Date"})
+
 # With the data cleaned, we can parse it into something normalized
-weekly_sales = df[["Title", "Date", "Week Sales", "Theaters", "Weeks"]]
-weekly_sales.set_index(["Title", "Date"], inplace=True)
+weekly_sales = df[["movie_id", "Date", "Week Sales", "Theaters", "Weeks"]]
+weekly_sales = weekly_sales.set_index(["movie_id", "Date"])
+assert weekly_sales.index.is_unique
 weekly_sales.to_parquet("data/weekly_sales.parquet")
 
-
-# Movie-Level Data Cleaning
-movies = df[["Title", "Distributor"]]
+# Similarly we can make our movies table
+movies = df[["movie_id", "Clean Title", "Distributor", "Rerelease", "Wide Release Date"]]
 movies = movies.drop_duplicates()
-
-# Let's go ahead and clean the titles now too so the cleaning is standardized
-cleaning_content = [clean_title(title) for title in movies["Title"]]
-movies["Clean Title"] = [content[0] for content in cleaning_content]
-movies["Rerelease"] = [content[1] for content in cleaning_content]
-
-movies.set_index("Title", inplace=True)
+movies = movies.set_index("movie_id")
+assert movies.index.is_unique
+print(movies.head(17))
 movies.to_parquet("data/movies.parquet")

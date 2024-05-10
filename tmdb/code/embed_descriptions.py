@@ -33,7 +33,7 @@ def get_embedding(description):
     return response
 
 # Get descriptions
-movie_data = pd.read_csv('descriptions/movie_descriptions.csv', encoding="ISO-8859-1")
+movie_data = pd.read_parquet('descriptions/movie_descriptions.parquet')
 
 # Drop if descriptions are null
 movie_data = movie_data.dropna(subset=['tmdb_description'])

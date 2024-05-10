@@ -2,7 +2,6 @@ import tmdbsimple as tmdb
 from unidecode import unidecode
 import pandas as pd
 import string
-import csv
 from tqdm import tqdm
 import re
 
@@ -14,7 +13,7 @@ def get_movie_info(row):
     Function to apply to each row in the movie data
     Takes info from that row and returns the movie info from TMDB
     """
-    cleaned_name = row["Cleaned Title"]
+    cleaned_name = row["Clean Title"]
     year = row["year"]
     rerelease = row["rerelease"]
     
@@ -46,16 +45,12 @@ with open('tmdb.secret', 'r') as f:
     api_key = f.read().strip()
     tmdb.API_KEY = api_key
 
-gurudata = pd.read_csv('../guru/data/weekly_sales.csv')
-
-# Convert Date to datetime
-gurudata['Date'] = pd.to_datetime(gurudata['Date'])
+movies = pd.read_parquet('../guru/data/movies.parquet')
+movies = movies.reset_index(drop=False)
 
 # Get the first date of each movie
-movies = gurudata.groupby('Title')['Date'].min().reset_index()
-movies['year'] = movies['Date'].dt.year
+movies['year'] = movies['Wide Release Date'].year
 
-# Merge premier onto movie data
 
 # Get movie info for each movie
 tqdm.pandas()
@@ -74,4 +69,4 @@ movies['tmdb_language'] = [query_result['original_language'] if query_result els
 movies['no_results'] = movies['tmdb_id'].isnull()
 
 # Write descriptions to file
-movies.to_csv('descriptions/movie_descriptions.csv', index=False)
+movies.to_parquet('descriptions/movie_descriptions.parquet', index=False)
