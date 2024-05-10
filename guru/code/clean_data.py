@@ -3,7 +3,10 @@ import os
 from bs4 import BeautifulSoup
 import re
 import progressbar
+import string
+from unidecode import unidecode
 
+PAREN_REGEX = re.compile(r'\([^)]*\)')
 table_regex = re.compile(r"Top\s*5")
 
 def parse_html(filename):
@@ -79,7 +82,7 @@ def parse_html(filename):
 
     # Convert sales columns to numeric
     for column in ["Week Sales", "Lag Week Sales", "Cumulative", "AVG"]:
-        if "AVG" not in df.columns:
+        if "AVG" not in df.columns and column == "AVG":
             continue
         df[column] = df[column].str.replace("$", "").str.replace(",", "").astype(pd.Int64Dtype())
 
@@ -91,9 +94,39 @@ def parse_html(filename):
 
     return df
 
+def clean_title(cleaned_name):
+
+    # Flag rereleases to change search year constraints
+    rerelease = False
+    if "RE" in cleaned_name or "rerelease" in cleaned_name.lower() or "reissue" in cleaned_name.lower() or "re-release" in cleaned_name.lower():
+        cleaned_name = cleaned_name.replace("RE", "")
+        cleaned_name = cleaned_name.replace("rerelease", "")
+        cleaned_name = cleaned_name.replace("reissue", "")
+        cleaned_name = cleaned_name.replace("re-release", "")
+        rerelease = True
+
+    # Remove anything in parentheses
+    cleaned_name = re.sub(PAREN_REGEX, '', cleaned_name)
+
+    # Remove anything after colon
+    cleaned_name = cleaned_name.split(":")[0]
+
+    # Remove accents
+    cleaned_name = unidecode(cleaned_name)
+
+    # Remove punctuation
+    cleaned_name = cleaned_name.translate(str.maketrans('', '', string.punctuation))
+
+    # Need to wait until after above to successfully flag RE
+    cleaned_name = cleaned_name.lower()
+    if "imax" in cleaned_name:
+        cleaned_name = cleaned_name.replace(" imax", " ")
+    cleaned_name = cleaned_name.replace(" pt", " Part")
+
+    return cleaned_name, rerelease
+
 # Read the data
 filenames = os.listdir("html")
-#filenames = ['070797.htm']
 dfs = []
 for filename in progressbar.progressbar(filenames):
     try:
@@ -106,15 +139,23 @@ for filename in progressbar.progressbar(filenames):
 
 df = pd.concat(dfs)
 
-#print(df)
+df['Theaters'] = df['Theaters'].astype(pd.Int64Dtype())
+df['Weeks'] = df['Weeks'].astype(pd.Int64Dtype())
 
 # With the data cleaned, we can parse it into something normalized
 weekly_sales = df[["Title", "Date", "Week Sales", "Theaters", "Weeks"]]
 weekly_sales.set_index(["Title", "Date"], inplace=True)
-weekly_sales.to_csv("data/weekly_sales.csv")
+weekly_sales.to_parquet("data/weekly_sales.parquet")
 
 
+# Movie-Level Data Cleaning
 movies = df[["Title", "Distributor"]]
 movies = movies.drop_duplicates()
+
+# Let's go ahead and clean the titles now too so the cleaning is standardized
+cleaning_content = [clean_title(title) for title in movies["Title"]]
+movies["Clean Title"] = [content[0] for content in cleaning_content]
+movies["Rerelease"] = [content[1] for content in cleaning_content]
+
 movies.set_index("Title", inplace=True)
-movies.to_csv("data/movies.csv")
+movies.to_parquet("data/movies.parquet")

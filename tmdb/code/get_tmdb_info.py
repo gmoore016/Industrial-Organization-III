@@ -14,40 +14,10 @@ def get_movie_info(row):
     Function to apply to each row in the movie data
     Takes info from that row and returns the movie info from TMDB
     """
-    cleaned_name = row['Title']
-    year = row['year']
-
-    # Flag rereleases to change search year constraints
-    rerelease = False
-    if "RE" in cleaned_name or "rerelease" in cleaned_name.lower() or "reissue" in cleaned_name.lower() or "re-release" in cleaned_name.lower():
-        cleaned_name = cleaned_name.replace("RE", "")
-        cleaned_name = cleaned_name.replace("rerelease", "")
-        cleaned_name = cleaned_name.replace("reissue", "")
-        cleaned_name = cleaned_name.replace("re-release", "")
-        rerelease = True
-
-    # Remove anything in parentheses
-    cleaned_name = re.sub(PAREN_REGEX, '', cleaned_name)
-
-    # Remove anything after colon
-    cleaned_name = cleaned_name.split(":")[0]
-
-    # Remove accents
-    cleaned_name = unidecode(cleaned_name)
-
-    # Remove punctuation
-    cleaned_name = cleaned_name.translate(str.maketrans('', '', string.punctuation))
-
-    # Need to wait until after above to successfully flag RE
-    cleaned_name = cleaned_name.lower()
-    if "imax" in cleaned_name:
-        cleaned_name = cleaned_name.replace(" imax", " ")
-    cleaned_name = cleaned_name.replace(" pt", " Part")
-                                        
+    cleaned_name = row["Cleaned Title"]
+    year = row["year"]
+    rerelease = row["rerelease"]
     
-    
-    
-
     # Search for movie given name and year
     search = tmdb.Search()
     if rerelease:
