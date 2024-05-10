@@ -4,14 +4,13 @@ import pickle
 from sklearn.decomposition import PCA
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+import re
 
 # Load the embeddings
 embeddings = pickle.load(open('../tmdb/embeddings/movie_descriptions.pkl', 'rb'))
 
 # Rename movie_odid to movie_id
-embeddings.rename(columns={'movie_odid': 'movie_id'}, inplace=True)
-
-# Merge embedding data onto google tren
+embeddings.rename(columns={'tmdb_id': 'movie_id'}, inplace=True)
 
 raw_embeddings = embeddings['embedding'].apply(lambda x: x.data[0].embedding).to_list()
 
@@ -21,56 +20,93 @@ reduced_embeddings = PCA(n_components=6).fit_transform(raw_embeddings)
 for i in range(6):
     embeddings[f'pca_{i}'] = reduced_embeddings[:, i]
 
-# Load google trends
-google_trends = pd.read_csv('../google_trends/output/trends.csv')
+# Load box office info
+guru = pd.read_parquet('../guru/data/weekly_sales.parquet')
 
-# Filter only to dates with 100 interest
-premier_dates = google_trends[google_trends['interest'] == 100]
+guru = guru.reset_index(drop=False)
 
-# In the event of a tie, take the first date
-premier_dates = premier_dates.groupby('movie_id').first()
-premier_dates.reset_index(inplace=True)
+# Drop if missing theaters
+guru = guru.dropna(subset=['Theaters'])
 
-# Rename columns
-premier_dates.columns = ['movie_id', 'premier_date', 'interest']
-premier_dates = premier_dates[['movie_id', 'premier_date']]
+# Convert theaters and weeks to integers
+guru['Theaters'] = guru['Theaters'].astype(pd.Int64Dtype())
+guru['Weeks'] = guru['Weeks'].astype(pd.Int64Dtype())
 
-# Merge premier_dates onto trends
-google_trends = google_trends.merge(premier_dates, on='movie_id')
-
-# Keep if date is within three months of premier
-google_trends['date'] = pd.to_datetime(google_trends['date'])
-google_trends['premier_date'] = pd.to_datetime(google_trends['premier_date'])
-google_trends['days_from_premier'] = (google_trends['date'] - google_trends['premier_date']).dt.days
-google_trends = google_trends[google_trends['days_from_premier'].between(0, 90)]
-
-# Keep if date has positive interest
-google_trends = google_trends[google_trends['interest'] > 0]
-
-# Limit only to movies from 2007
-google_trends = google_trends[google_trends['premier_date'].dt.year == 2007]
 
 # Compute log interest
-google_trends['ln_interest'] = np.log(google_trends['interest'])
+guru['ln_earnings'] = np.log(guru['Week Sales'])
+
+# Count if missing theaters or log earnings
+print(f"Missing theaters: {guru['Theaters'].isnull().sum()}")
+print(f"Missing log earnings: {guru['ln_earnings'].isnull().sum()}")
+
+guru = guru.dropna(subset=['Theaters', 'ln_earnings'])
+guru = guru.drop("Weeks", axis=1)
+
+# Disambiguate movies with the same name while computing movie spell lengths
+max_spell_length = 10000
+counter = 0
+while max_spell_length > 60:
+    print("Iteration: ", counter)
+    wide_release_dates = guru[guru['Theaters'] >= 600].groupby('Clean Title')['Date'].min()
+    # Rename the column
+    wide_release_dates = wide_release_dates.reset_index()
+    wide_release_dates.columns = ['Clean Title', 'Date_wide']
+
+    # Drop any showings before the wide release
+    guru = guru.merge(
+        wide_release_dates, 
+        on='Clean Title',
+    )
+    
+    guru = guru[guru['Date'] >= guru['Date_wide']]
+
+    # Compute weeks since wide release
+    guru['weeks_since_release'] = (guru['Date'] - guru['Date_wide']).dt.days // 7
+
+    # If a movie has been out for more than 50 weeks, it's likely a different movie with the same name
+    # Thus, flag title with counter
+    guru['Clean Title'] = np.where(guru['weeks_since_release'] > 60, guru['Clean Title'] + f'_{counter}', guru['Clean Title'])
+
+    max_spell_length = guru['weeks_since_release'].max()
+    counter += 1
+    
+    # Drop wide release date
+    print(guru.head())
+    print(guru.columns)
+    guru = guru.drop('Date_wide', axis=1)
+
+# Histogram of weeks since release
+plt.hist(guru['weeks_since_release'], bins=20)
+plt.xlabel('Weeks Since Wide Release')
+plt.ylabel('Frequency')
+plt.title('Histogram of Weeks Since Wide Release')
+plt.show()
+
+spell_lengths = guru.groupby('Clean Title')['weeks_since_release'].max()
+print(spell_lengths.sort_values(ascending=False))
+kill
+
+
 
 # De-Mean log interest within a month
-google_trends['month'] = google_trends['date'].dt.to_period('M')
-google_trends['ln_interest'] = google_trends.groupby('month')['ln_interest'].transform(lambda x: x - x.mean())
+guru['month'] = guru['Date'].dt.to_period('M')
+guru['ln_earnings'] = guru.groupby('month')['ln_earnings'].transform(lambda x: x - x.mean())
 
 # De-Mean log interest within a movie
-google_trends['ln_interest'] = google_trends.groupby('movie_id')['ln_interest'].transform(lambda x: x - x.mean())
+guru['ln_earnings'] = guru.groupby('movie_id')['ln_earnings'].transform(lambda x: x - x.mean())
 
 
 
 # Limit sample to movies with trends and embeddings
-movies_with_trends = google_trends['movie_id'].unique()
-movies_with_embeddings = embeddings['movie_id'].unique()
+movies_with_trends = guru['Clean Title'].unique()
+movies_with_embeddings = embeddings['Clean Title'].unique()
 movies = np.intersect1d(movies_with_trends, movies_with_embeddings)
 
 print(f'Number of movies satisfying all criteria: {len(movies)}')
 
-google_trends = google_trends[google_trends['movie_id'].isin(movies)]
-embeddings = embeddings[embeddings['movie_id'].isin(movies)]
+guru = guru[guru['Clean Title'].isin(movies)]
+embeddings = embeddings[embeddings['Clean Title'].isin(movies)]
 
 # Create distances between relevant movies
 movie_distances = {}
