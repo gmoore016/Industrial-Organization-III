@@ -1,3 +1,3 @@
-python3 code/get_tmdb_info.py
-python3 code/embed_descriptions.py
-python3 code/plot_genres.py
+python code/get_tmdb_info.py
+python code/embed_descriptions.py
+python code/plot_genres.py

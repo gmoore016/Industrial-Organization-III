@@ -1,1 +1,1 @@
-python3 code/estimate_elasticity.py
+python code/estimate_elasticity.py
