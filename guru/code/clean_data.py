@@ -112,7 +112,7 @@ def clean_title(cleaned_name):
     cleaned_name = re.sub(PAREN_REGEX, '', cleaned_name)
 
     # Remove anything after colon
-    #cleaned_name = cleaned_name.split(":")[0]
+    cleaned_name = cleaned_name.split(":")[0]
 
     # Remove accents
     cleaned_name = unidecode(cleaned_name)
@@ -125,6 +125,11 @@ def clean_title(cleaned_name):
     if "imax" in cleaned_name:
         cleaned_name = cleaned_name.replace(" imax", " ")
     cleaned_name = cleaned_name.replace(" pt", " Part")
+
+    # Misc Typos
+    cleaned_name = cleaned_name.replace("shephard", "shepherd")
+    cleaned_name = cleaned_name.replace("lmposter", "imposter")
+    cleaned_name = cleaned_name.replace("u23d", "u2 3d")
 
     return cleaned_name, rerelease
 
@@ -195,8 +200,8 @@ while max_spell_length > 60:
     # Thus, needs a new id
     df['movie_id'] = np.where(
         df['weeks_since_release'] > 60, 
+        df['movie_id'], 
         df['movie_id'] + "_" + str(counter),
-        df['movie_id']
     )
 
     max_spell_length = df['weeks_since_release'].max()
@@ -237,7 +242,7 @@ movies.loc[movies['Distributor'] == "Goldwyn / Roadside", 'Distributor'] = "Gold
 
 # Additional selective replacements
 replacement_dict = {
-    'tron legacy': "Disney",
+    'tron': "Disney",
     'tangled': "Disney",
     'rollerball': "MGM",
     'blacklight': "Briarcliff",
@@ -249,7 +254,7 @@ replacement_dict = {
     'over the hedge': "Paramount",
     'valerian and the city of a thousand planets': "STX",
     'sinister': "Lionsgate",
-    "return to me": "MGM"
+    "return to me": "MGM",
 }
 
 for title, distributor in replacement_dict.items():
@@ -257,6 +262,10 @@ for title, distributor in replacement_dict.items():
 
 # Date-specific replacement
 movies.loc[(movies['Clean Title'] == 'shaft') & (movies['Wide Release Date'] == datetime.datetime.strptime('2019-06-17', "%Y-%m-%d")), 'Distributor'] = "Warner Bros."
+movies.loc[(movies['Clean Title'] == 'demon slayer') & (movies['Wide Release Date'] == datetime.datetime.strptime('2023-03-06', "%Y-%m-%d")), 'Distributor'] = "Crunchyroll"
+movies.loc[(movies['Clean Title'] == 'spiderman') & (movies['Wide Release Date'] == datetime.datetime.strptime('2021-12-20', "%Y-%m-%d")), 'Rerelease'] = False
+
+
 
 movies = movies.drop_duplicates()
 movies = movies.set_index("movie_id")

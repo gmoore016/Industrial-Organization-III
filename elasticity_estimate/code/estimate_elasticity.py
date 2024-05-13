@@ -2,22 +2,38 @@ import pandas as pd
 import numpy as np
 import pickle
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+import statsmodels.api as sm
 import re
+import linearmodels as lm
+import time
 
-# Load the embeddings
-embeddings = pickle.load(open('../tmdb/embeddings/movie_descriptions.pkl', 'rb'))
+N_DIMS = 6
 
-# Rename movie_odid to movie_id
-embeddings.rename(columns={'tmdb_id': 'movie_id'}, inplace=True)
+# Load the embeddings from parquet
+embeddings = pd.read_parquet('../tmdb/embeddings/movie_descriptions.parquet')
 
-raw_embeddings = embeddings['embedding'].apply(lambda x: x.data[0].embedding).to_list()
+# Drop if embeddings are null
+embeddings = embeddings.dropna(subset=['embedding'])
 
-raw_embeddings = np.array(raw_embeddings)
-reduced_embeddings = PCA(n_components=6).fit_transform(raw_embeddings)
+raw_embeddings = np.array(embeddings['embedding'].values)
+raw_embeddings = np.array([np.array(x) for x in raw_embeddings])
 
-for i in range(6):
+start_time = time.time()
+# On CPU, recommended to PCA first
+# https://medium.com/rapids-ai/tsne-with-gpus-hours-to-seconds-9d9c17c941db
+#reduced_embeddings = PCA(n_components=50).fit_transform(raw_embeddings)
+#print("Starting t-SNE...")
+#reduced_embeddings = TSNE(n_components=N_DIMS, n_jobs=-1, method='exact', random_state=0).fit_transform(reduced_embeddings)
+#print("Finished t-SNE!")
+#print("Runtime: ", time.time() - start_time)
+
+reduced_embeddings = PCA(n_components=N_DIMS).fit_transform(raw_embeddings)
+
+
+for i in range(N_DIMS):
     embeddings[f'pca_{i}'] = reduced_embeddings[:, i]
 
 # Load box office info
@@ -25,198 +41,207 @@ guru = pd.read_parquet('../guru/data/weekly_sales.parquet')
 
 guru = guru.reset_index(drop=False)
 
-# Drop if missing theaters
-guru = guru.dropna(subset=['Theaters'])
-
-# Convert theaters and weeks to integers
-guru['Theaters'] = guru['Theaters'].astype(pd.Int64Dtype())
-guru['Weeks'] = guru['Weeks'].astype(pd.Int64Dtype())
-
+print(guru.dtypes)
 
 # Compute log interest
 guru['ln_earnings'] = np.log(guru['Week Sales'])
 
-# Count if missing theaters or log earnings
-print(f"Missing theaters: {guru['Theaters'].isnull().sum()}")
-print(f"Missing log earnings: {guru['ln_earnings'].isnull().sum()}")
-
-guru = guru.dropna(subset=['Theaters', 'ln_earnings'])
-guru = guru.drop("Weeks", axis=1)
-
+# Drop if missing weeks
+guru = guru.dropna(subset=['Weeks'])
 
 # Histogram of weeks since release
-plt.hist(guru['weeks_since_release'], bins=20)
+plt.hist(guru['Weeks'], bins=20)
 plt.xlabel('Weeks Since Wide Release')
 plt.ylabel('Frequency')
 plt.title('Histogram of Weeks Since Wide Release')
-plt.show()
-
-spell_lengths = guru.groupby('Clean Title')['weeks_since_release'].max()
-print(spell_lengths.sort_values(ascending=False))
-kill
-
-
-
-# De-Mean log interest within a month
-guru['month'] = guru['Date'].dt.to_period('M')
-guru['ln_earnings'] = guru.groupby('month')['ln_earnings'].transform(lambda x: x - x.mean())
-
-# De-Mean log interest within a movie
-guru['ln_earnings'] = guru.groupby('movie_id')['ln_earnings'].transform(lambda x: x - x.mean())
-
-
+plt.savefig('output/weeks_histogram.png')
 
 # Limit sample to movies with trends and embeddings
-movies_with_trends = guru['Clean Title'].unique()
-movies_with_embeddings = embeddings['Clean Title'].unique()
+movies_with_trends = guru['movie_id'].unique()
+movies_with_embeddings = embeddings['movie_id'].unique()
 movies = np.intersect1d(movies_with_trends, movies_with_embeddings)
 
 print(f'Number of movies satisfying all criteria: {len(movies)}')
 
-guru = guru[guru['Clean Title'].isin(movies)]
-embeddings = embeddings[embeddings['Clean Title'].isin(movies)]
+guru = guru[guru['movie_id'].isin(movies)]
+embeddings = embeddings[embeddings['movie_id'].isin(movies)]
 
 # Create distances between relevant movies
 movie_distances = {}
 
 max_distance = 0
 
-for movie_id1 in movies:
-    for movie_id2 in movies:
-        if movie_id1 == movie_id2:
+# Find the closest movies for a subsample of the data
+examples = [
+    "e487ee1bc1477d6c2828d91e94c01c6e_0_1_2_3_4_5_6", # Tangled
+    "72858d1af3c55029d5dc0bf1a77b6d9e_0_1_2_3_4_5_6", # Frozen
+    "cabdb1014252d39ac018f447e7d5fbc2_0_1_2_3_4_5_6", # Dune: Part 1
+    "31a3df9bd28be76c134d369e990d5094_0_1_2_3_4_5_6", # The Notebook
+    "90eb7723a657b6597100aafef171d9f2_2_3_4_5_6", # Avengers: Endgame
+    "635d8ed0689c0a83f596cf04ebe45b97_0_1_2_3_4_5_6", # A Bug's Life
+]
+
+# For each example, find the two closest movies
+for example in examples:
+    example_embedding = embeddings[embeddings['movie_id'] == example]
+    example_embedding = example_embedding.filter(like='pca').to_numpy().flatten()
+
+    distances = []
+    for row in embeddings.itertuples():
+        if row.movie_id == example:
             continue
-        if (movie_id2, movie_id1) in movie_distances:
-            movie_distances[(movie_id1, movie_id2)] = movie_distances[(movie_id2, movie_id1)]
 
-        movie1 = embeddings[embeddings['movie_id'] == movie_id1]
-        movie2 = embeddings[embeddings['movie_id'] == movie_id2]
+        movie_embedding = np.array([row.pca_0, row.pca_1, row.pca_2, row.pca_3, row.pca_4, row.pca_5])
+        distance = np.linalg.norm(example_embedding - movie_embedding)
+        distances.append((row.movie_id, row.tmdb_name, distance))
 
-        # Filter only to pca columns
-        movie1 = movie1.filter(like='pca').to_numpy().flatten()
-        movie2 = movie2.filter(like='pca').to_numpy().flatten()
+    distances = sorted(distances, key=lambda x: x[2])
+    print(f'Closest movies to {example}:')
+    print("-------------------------")
+    for i in range(10):
+        print(f'{distances[i][1]}: {distances[i][2]} (movie_id: {distances[i][0]})')
+    print("Movies at distance .3:")
+    # Get a movie that is distance .3 away
+    sim_movies = [x for x in distances if x[2] < .3][-5:]
+    for sim_movie in sim_movies:
+        print(f'{sim_movie[1]}: {sim_movie[2]} (movie_id: {sim_movie[0]})')
+    print("Movie at distnace .6:")
+    # Get a movie that is distance .6 away
+    sim_movies = [x for x in distances if x[2] < .6][-5:]
+    for sim_movie in sim_movies:
+        print(f'{sim_movie[1]}: {sim_movie[2]} (movie_id: {sim_movie[0]})')
+    print("\n")
+
+# Get the distribution of distances between movies
+empirical_distances = []
+for row1 in embeddings.itertuples():
+    for row2 in embeddings.itertuples():
+        if row1.movie_id == row2.movie_id:
+            continue
+
+        movie1 = np.array([row1.pca_0, row1.pca_1, row1.pca_2, row1.pca_3, row1.pca_4, row1.pca_5])
+        movie2 = np.array([row2.pca_0, row2.pca_1, row2.pca_2, row2.pca_3, row2.pca_4, row2.pca_5])
 
         distance = np.linalg.norm(movie1 - movie2)
-        if distance > max_distance:
-            max_distance = distance
-        movie_distances[(movie_id1, movie_id2)] = distance
+        empirical_distances.append(distance)
+
+# For each date in the guru data, get the set of corresponding movies
+for date in guru['Date'].unique():
+    movies = guru[guru['Date'] == date]['movie_id'].unique()
+
+    # For each pair of movies, compute the distance
+    movie_pairs = [(movie_id1, movie_id2) for movie_id1 in movies for movie_id2 in movies if movie_id1 != movie_id2]
+
+    for movie_id1, movie_id2 in movie_pairs:
+        if (movie_id1, movie_id2) in movie_distances:
+            continue
+        else:
+            movie1 = embeddings[embeddings['movie_id'] == movie_id1]
+            movie2 = embeddings[embeddings['movie_id'] == movie_id2]
+
+            # Filter only to pca columns
+            movie1 = movie1.filter(like='pca').to_numpy().flatten()
+            movie2 = movie2.filter(like='pca').to_numpy().flatten()
+
+            distance = np.linalg.norm(movie1 - movie2)
+            if distance > max_distance:
+                max_distance = distance
+            movie_distances[(movie_id1, movie_id2)] = distance
+            movie_distances[(movie_id2, movie_id1)] = distance
 
 # Normalize distances
 for key, value in movie_distances.items():
     movie_distances[key] = value / max_distance
 
-# Iterate over weeks of the dataframe
-weeks = google_trends['date'].unique()
-movie_week_distances = {}
-for week in weeks:
-    week_data = google_trends[google_trends['date'] == week]
+# For each movie-date, compute the leave-one-out set of distances within the date
+gamma1 = []
+gamma2 = []
+gamma3 = []
 
-    # For each movie, compute the list of distances
-    week_movies = week_data['movie_id'].unique()
-    for base_movie in week_movies:
-        distances = []
-        for comparison_movie in week_movies:
-            if base_movie == comparison_movie:
-                continue
-            distances.append(movie_distances[(base_movie, comparison_movie)])
+for row in guru.itertuples():
+    movie_id = row.movie_id
+    date = row.Date
 
-        movie_week_distances[(base_movie, week)] = distances
+    # Get all movies on the date
+    date_movies = guru[guru['Date'] == date]
+    
+    competitor_ids = date_movies['movie_id'].unique()
 
-class Observation():
-    def __init__(self, movie_id, date, distances, ln_interest):
-        self.movie_id = movie_id
-        self.date = date
-        self.distances = distances
-        self.ln_interest = ln_interest
+    # Compute the distances
+    distances = []
+    for comparison_movie in competitor_ids:
+        if movie_id == comparison_movie:
+            continue
+        distances.append(movie_distances[(movie_id, comparison_movie)])
 
-# Create observations
-observations = []
-for (movie_id, date), distances in movie_week_distances.items():
-    interest = google_trends[(google_trends['movie_id'] == movie_id) & (google_trends['date'] == date)]['ln_interest'].values[0]
-    observation = Observation(movie_id, date, distances, interest)
-    observations.append(observation)
+    distances = np.array(distances)
 
-def objective(params, observations):
-    """
-    Objective function for the optimization
-    """
-    # Unpack parameters
-    alpha, gamma1, gamma2, gamma3 = params
+    # No need to weight by log price since log price is constant
+    gamma1.append(np.sum(distances))
+    gamma2.append(np.sum(distances ** 2))
+    gamma3.append(np.sum(distances ** 3))
 
-    # Compute the sum of squared errors
-    sse = 0
-    for observation in observations:
-        # Cross-substitution term
-        cross_sub = 0
-        for distance in observation.distances:
-            cross_sub += gamma1 * distance + gamma2 * distance ** 2 + gamma3 * distance ** 3
+# Add to the guru data
+guru['gamma1'] = gamma1
+guru['gamma2'] = gamma2
+guru['gamma3'] = gamma3
 
-        interest_hat = alpha + cross_sub
-        sse += (observation.ln_interest - interest_hat) ** 2
+# Convert movie_id to categorical
+guru['movie_id'] = guru['movie_id'].astype('category')
 
-    return sse
+guru.set_index(['movie_id', 'Date'], inplace=True)
 
-# Estimate parameters for our cubic
-solution = minimize(
-    objective,
-    x0=[1, 1, 1, 1],
-    args=(observations,),
-)
+print(guru.head())
 
-print(solution.x)
+# Run regression of log earnings on distances and age
+X = guru[['ln_earnings', 'gamma1', 'gamma2', 'gamma3', 'Weeks']]
+X['Weeks'] = X['Weeks'].astype('category')
+#X = sm.add_constant(X)
+reg = lm.PanelOLS.from_formula('ln_earnings ~ gamma1 + gamma2 + gamma3 + Weeks + EntityEffects + TimeEffects', data=X)
 
-# Plot function implied by solution
-alphahat, gamma1hat, gamma2hat, gamma3hat = solution.x
+results = reg.fit(low_memory=False)
+print(results)
 
-distance_grid = np.linspace(0, 1, 100)
-elasticity = gamma1hat * distance_grid + gamma2hat * distance_grid ** 2 + gamma3hat * distance_grid ** 3
+# Get coefficients on gamma1, gamma2, and gamma3
+gamma1_coefficient = results.params['gamma1']
+gamma2_coefficient = results.params['gamma2']
+gamma3_coefficient = results.params['gamma3']
 
+# Plot cross-elasticities over distance
+distances = np.linspace(0, 1, 100)
+cross_elasticity = gamma1_coefficient * distances + gamma2_coefficient * distances ** 2 + gamma3_coefficient * distances ** 3
 
-# Create histogram of distances
-empirical_distances = []
-for observation in observations:
-    empirical_distances.extend(observation.distances)
+# Get the index of distances closest to .3
+index_30 = np.argmin(np.abs(distances - .3))
+index_60 = np.argmin(np.abs(distances - .6))
 
-# Get bottom and top decile
-distances = np.array(empirical_distances)
-bottom_decile = np.percentile(distances, 10)
-top_decile = np.percentile(distances, 90)
-median = np.percentile(distances, 50)
+print(f'Cross-elasticity at .3: {cross_elasticity[index_30]}')
+print(f'Cross-elasticity at .6: {cross_elasticity[index_60]}')
 
-plt.hist(empirical_distances, bins=20)
-plt.xlabel('Distance')
-plt.ylabel('Frequency')
-plt.title('Histogram of Distances')
+# Get the vector of distances
+empirical_distances = np.array(list(movie_distances.values()))
 
-plt.axvline(x=bottom_decile, color='r', linestyle='--')
-plt.axvline(x=top_decile, color='r', linestyle='--')
-plt.axvline(x=median, color='g', linestyle='--')
+# Plot data density and cross-elasticity on same plot
+fig, ax1 = plt.subplots()
 
-# Add labels
-plt.text(bottom_decile, 0, 'Bottom Decile', rotation=90)
-plt.text(top_decile, 0, 'Top Decile', rotation=90)
-plt.text(median, 0, 'Median', rotation=90)
+# Add title
+ax1.set_title('Cross-Elasticity of Distance')
+ax2 = ax1.twinx()
 
-plt.savefig('output/histogram_distances.png')
+# Plot the empirical distances
+ax2.hist(empirical_distances, bins=20, alpha=0.5, density=True)
+ax2.set_xlabel('Distance')
+ax2.set_ylabel('Density of Empirical Distance')
 
+ax1.plot(distances, cross_elasticity, color='orange')
+ax1.set_ylabel('Cross-Elasticity of Distance')
 
-# New plot
-plt.figure()
+# Add vertical lines at the top and bottom deciles
+top_decile = np.percentile(empirical_distances, 90)
+bottom_decile = np.percentile(empirical_distances, 10)
 
-# Plot elasticity function
-plt.plot(distance_grid, elasticity)
-plt.xlabel('Distance')
-plt.ylabel('Elasticity')
-plt.title('Estimated Elasticity Function')
+ax2.axvline(x=top_decile, color='red', linestyle='--')
+ax2.axvline(x=bottom_decile, color='red', linestyle='--')
 
-# Add lines for median and top/bottom deciles
-plt.axvline(x=bottom_decile, color='r', linestyle='--')
-plt.axvline(x=top_decile, color='r', linestyle='--')
-plt.axvline(x=median, color='g', linestyle='--')
-
-# Add labels
-plt.text(bottom_decile, 0, 'Bottom Decile', rotation=90)
-plt.text(top_decile, 0, 'Top Decile', rotation=90)
-plt.text(median, 0, 'Median', rotation=90)
-
-plt.savefig('output/elasticity_function.png')
-
+fig.tight_layout()
+plt.savefig('output/cross_elasticity.png')

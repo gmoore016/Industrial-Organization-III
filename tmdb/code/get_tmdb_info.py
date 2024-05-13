@@ -5,8 +5,6 @@ import string
 from tqdm import tqdm
 import re
 
-PAREN_REGEX = re.compile(r'\([^)]*\)')
-
 
 def get_movie_info(row):
     """
@@ -14,8 +12,9 @@ def get_movie_info(row):
     Takes info from that row and returns the movie info from TMDB
     """
     cleaned_name = row["Clean Title"]
-    year = row["year"]
-    rerelease = row["rerelease"]
+    rerelease = row["Rerelease"]
+
+    year = row["Wide Release Date"].year
     
     # Search for movie given name and year
     search = tmdb.Search()
@@ -48,10 +47,6 @@ with open('tmdb.secret', 'r') as f:
 movies = pd.read_parquet('../guru/data/movies.parquet')
 movies = movies.reset_index(drop=False)
 
-# Get the first date of each movie
-movies['year'] = movies['Wide Release Date'].year
-
-
 # Get movie info for each movie
 tqdm.pandas()
 query_results = movies.progress_apply(get_movie_info, axis=1)
@@ -69,4 +64,5 @@ movies['tmdb_language'] = [query_result['original_language'] if query_result els
 movies['no_results'] = movies['tmdb_id'].isnull()
 
 # Write descriptions to file
+movies.to_csv('descriptions/movie_descriptions.csv', index=False)
 movies.to_parquet('descriptions/movie_descriptions.parquet', index=False)

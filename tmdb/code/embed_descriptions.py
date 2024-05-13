@@ -41,5 +41,9 @@ movie_data = movie_data.dropna(subset=['tmdb_description'])
 # Embed descriptions
 movie_data['embedding'] = movie_data['tmdb_description'].progress_apply(get_embedding)
 
-with open('embeddings/movie_descriptions.pkl', 'wb') as f:
-    pickle.dump(movie_data, f)
+# Save to pickle
+movie_data.to_pickle('embeddings/movie_descriptions.pkl')
+
+# Unpack embedding object if it exists, otherwise set to None
+movie_data['embedding'] = movie_data['embedding'].apply(lambda x: x.data[0].embedding if x else None)
+movie_data.to_parquet('embeddings/movie_descriptions.parquet')
