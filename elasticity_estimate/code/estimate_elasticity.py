@@ -219,7 +219,7 @@ print(f'Cross-elasticity at .3: {cross_elasticity[index_30]}')
 print(f'Cross-elasticity at .6: {cross_elasticity[index_60]}')
 
 # Get the vector of distances
-empirical_distances = np.array(list(movie_distances.values()))
+#empirical_distances = np.array(list(movie_distances.values()))
 
 # Plot data density and cross-elasticity on same plot
 fig, ax1 = plt.subplots()
