@@ -15,13 +15,23 @@ import statsmodels.formula.api as smf
 N_DIMS = 6
 
 # Load the embeddings from parquet
-embeddings = pd.read_parquet('../tmdb/embeddings/movie_descriptions.parquet')
+tmdb = pd.read_parquet('../tmdb/embeddings/movie_descriptions.parquet')
 
 # Drop if embeddings are null
-embeddings = embeddings.dropna(subset=['embedding'])
+tmdb = tmdb.dropna(subset=['embedding'])
+tmdb = tmdb.reset_index(drop=True)
 
-raw_embeddings = np.array(embeddings['embedding'].values)
+# Get array of movie ids
+movie_ids = tmdb['movie_id'].copy()
+
+raw_embeddings = np.array(tmdb['embedding'].values)
 raw_embeddings = np.array([np.array(x) for x in raw_embeddings])
+
+# Create distance matrix by taking dot product of embeddings
+distances = 1 - raw_embeddings @ raw_embeddings.T
+
+# Normalize distances
+distances = distances / np.max(distances)
 
 #reduced_embeddings = PCA(n_components=N_DIMS).fit_transform(raw_embeddings)
 
@@ -52,76 +62,20 @@ plt.savefig('output/weeks_histogram.png')
 
 # Limit sample to movies with trends and embeddings
 movies_with_trends = guru['movie_id'].unique()
-movies_with_embeddings = embeddings['movie_id'].unique()
+movies_with_embeddings = tmdb['movie_id'].unique()
 movies = np.intersect1d(movies_with_trends, movies_with_embeddings)
+
+assert len(movies) == distances.shape[0]
 
 print(f'Number of movies satisfying all criteria: {len(movies)}')
 
 guru = guru[guru['movie_id'].isin(movies)]
-embeddings = embeddings[embeddings['movie_id'].isin(movies)]
-
-# Create distances between relevant movies
-movie_distances = {}
-
-max_distance = 0
-
-# Get the distribution of distances between movies
-empirical_distances = []
-for row1 in embeddings.itertuples():
-    for row2 in embeddings.itertuples():
-        if row1.movie_id == row2.movie_id:
-            continue
-
-        movie1 = row1.embedding
-        movie2 = row2.embedding
-
-        distance = cosine(movie1, movie2)
-
-        empirical_distances.append(distance)
-
-# Clear canvas
-plt.clf()
-
-# Plot histogram of distances
-plt.hist(empirical_distances, bins=50)
-plt.xlabel('Distance')
-plt.ylabel('Frequency')
-plt.title('Histogram of Distances Between Movies')
-plt.savefig('output/distance_histogram_unnormalized.png')
-
-# For each date in the guru data, get the set of corresponding movies
-for date in guru['Date'].unique():
-    movies = guru[guru['Date'] == date]['movie_id'].unique()
-
-    # For each pair of movies, compute the distance
-    movie_pairs = [(movie_id1, movie_id2) for movie_id1 in movies for movie_id2 in movies if movie_id1 != movie_id2]
-
-    for movie_id1, movie_id2 in movie_pairs:
-        if (movie_id1, movie_id2) in movie_distances:
-            continue
-        else:
-            movie1 = embeddings[embeddings['movie_id'] == movie_id1]
-            movie2 = embeddings[embeddings['movie_id'] == movie_id2]
-
-            # Filter only to pca columns
-            movie1 = movie1['embedding'].values[0]
-            movie2 = movie2['embedding'].values[0]
-
-            distance = cosine(movie1, movie2)
-            if distance > max_distance:
-                max_distance = distance
-            movie_distances[(movie_id1, movie_id2)] = distance
-            movie_distances[(movie_id2, movie_id1)] = distance
-
-# Normalize distances
-for key, value in movie_distances.items():
-    movie_distances[key] = value / max_distance
+embeddings = tmdb[tmdb['movie_id'].isin(movies)]
 
 # Get the index of distances at bottom and top ends
 #empirical_distances = np.array(list(movie_distances.values()))
-empirical_distances = np.array(empirical_distances)
-bottom_end = np.percentile(empirical_distances, 10)
-top_end = np.percentile(empirical_distances, 90)
+bottom_end = np.percentile(distances, 10)
+top_end = np.percentile(distances, 90)
 
 # Find the closest movies for a subsample of the data
 examples = [
@@ -135,36 +89,56 @@ examples = [
 
 # For each example, find the two closest movies
 for example in examples:
-    example_embedding = embeddings[embeddings['movie_id'] == example]
-    example_embedding = example_embedding['embedding'].values[0]
+    # Get index of the example
+    example_index = np.where(movie_ids == example)[0][0]
 
-    distances = []
-    for row in embeddings.itertuples():
-        if row.movie_id == example:
-            continue
+    example_name = tmdb[tmdb['movie_id'] == example]['Clean Title'].values[0]
 
-        #movie_embedding = np.array([row.pca_0, row.pca_1, row.pca_2, row.pca_3, row.pca_4, row.pca_5])
-        movie_embedding = row.embedding
-        distance = cosine(example_embedding, movie_embedding)
-        norm_distance = distance / max_distance
-        distances.append((row.movie_id, row.tmdb_name, norm_distance))
+    distances_to_example = distances[example_index, :].copy()
 
-    distances = sorted(distances, key=lambda x: x[2])
-    print(f'Closest movies to {example}:')
+    print("\n")
+
+    print(f'Closest movies to {example_name}:')
     print("-------------------------")
     for i in range(10):
-        print(f'{distances[i][1]}: {distances[i][2]} (movie_id: {distances[i][0]})')
-    print("Movies which are close:")
-    # Get a movie that is one end away
-    sim_movies = [x for x in distances if x[2] < bottom_end][-5:]
-    for sim_movie in sim_movies:
-        print(f'{sim_movie[1]}: {sim_movie[2]} (movie_id: {sim_movie[0]})')
-    print("Movies which are far:")
-    # Get a movie that is nine ends away
-    sim_movies = [x for x in distances if x[2] < top_end][-5:]
-    for sim_movie in sim_movies:
-        print(f'{sim_movie[1]}: {sim_movie[2]} (movie_id: {sim_movie[0]})')
+        closest_index = np.argmin(distances_to_example)
+        closest_movie = movie_ids[closest_index]
+        closest_distance = distances_to_example[closest_index]
+
+        closest_movie_name = tmdb['Clean Title'][closest_index]
+
+        print(f'{closest_movie_name}: {closest_distance}')
+        distances_to_example[closest_index] = np.inf
+
     print("\n")
+
+    distances_to_example = distances[example_index].copy()
+    print("Movies which are close:")
+    distances_from_bottom_decile = np.abs(distances_to_example - bottom_end)
+    for i in range(10):
+        closest_index = np.argmin(distances_from_bottom_decile)
+        closest_movie = movie_ids[closest_index]
+        closest_distance = distances_to_example[closest_index]
+
+        closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
+
+        print(f'{closest_movie_name}: {closest_distance}')
+        distances_from_bottom_decile[closest_index] = np.inf
+
+    print("\n")
+
+    distances_to_example = distances[example_index].copy()
+    print("Movies which are far:")
+    distances_from_top_decile = np.abs(distances_to_example - top_end)
+    for i in range(10):
+        closest_index = np.argmin(distances_from_top_decile)
+        closest_movie = movie_ids[closest_index]
+        closest_distance = distances_to_example[closest_index]
+
+        closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
+
+        print(f'{closest_movie_name}: {closest_distance}')
+        distances_from_top_decile[closest_index] = np.inf
 
 # For each movie-date, compute the leave-one-out set of distances within the date
 gamma0 = []
@@ -176,25 +150,34 @@ for row in guru.itertuples():
     movie_id = row.movie_id
     date = row.Date
 
+    # Get index of movie_id in movie_ids
+    movie_index = np.where(movie_ids == movie_id)[0][0]
+
     # Get all movies on the date
     date_movies = guru[guru['Date'] == date]
     
     competitor_ids = date_movies['movie_id'].unique()
 
     # Compute the distances
-    distances = []
+    competitor_distances = []
     for comparison_movie in competitor_ids:
         if movie_id == comparison_movie:
             continue
-        distances.append(movie_distances[(movie_id, comparison_movie)])
 
-    distances = np.array(distances)
+        comparison_index = np.where(movie_ids == comparison_movie)[0][0]
+
+        if np.isinf(distances[movie_index, comparison_index]):
+            print(f'Infinite distance between {movie_id} and {comparison_movie}')
+
+        competitor_distances.append(distances[movie_index, comparison_index])
+
+    competitor_distances = np.array(competitor_distances)
 
     # No need to weight by log price since log price is constant
-    gamma0.append(len(distances))
-    gamma1.append(np.sum(distances))
-    gamma2.append(np.sum(distances ** 2))
-    gamma3.append(np.sum(distances ** 3))
+    gamma0.append(len(competitor_distances))
+    gamma1.append(np.sum(competitor_distances))
+    gamma2.append(np.sum(competitor_distances ** 2))
+    gamma3.append(np.sum(competitor_distances ** 3))
 
 # Add to the guru data
 guru['gamma0'] = gamma0
@@ -208,6 +191,9 @@ guru['movie_id'] = guru['movie_id'].astype('category')
 guru.set_index(['movie_id', 'Date'], inplace=True)
 
 print(guru.head())
+
+# Print rows containing infinite values
+print(guru[guru.isin([np.nan, np.inf, -np.inf]).any(axis=1)])
 
 # Run regression of log earnings on distances and age
 X = guru[['ln_earnings', 'gamma0', 'gamma1', 'gamma2', 'gamma3', 'Weeks']]
@@ -226,11 +212,11 @@ gamma2_coefficient = results.params['gamma2']
 gamma3_coefficient = results.params['gamma3']
 
 # Plot cross-elasticities over distance
-distances = np.linspace(0, 1, 100)
-cross_elasticity = gamma0_coefficient + gamma1_coefficient * distances + gamma2_coefficient * distances ** 2 + gamma3_coefficient * distances ** 3
+distance_grid = np.linspace(0, 1, 100)
+cross_elasticity = gamma0_coefficient + gamma1_coefficient * distance_grid + gamma2_coefficient * distance_grid ** 2 + gamma3_coefficient * distance_grid ** 3
 
-bottom_index = np.argmin(np.abs(distances - bottom_end))
-top_index = np.argmin(np.abs(distances - top_end))
+bottom_index = np.argmin(np.abs(distance_grid - bottom_end))
+top_index = np.argmin(np.abs(distance_grid - top_end))
 
 
 print(f'Cross-elasticity at bottom end of distance: {cross_elasticity[bottom_index]}')
@@ -238,6 +224,9 @@ print(f'Cross-elasticity at top end of distance: {cross_elasticity[top_index]}')
 
 # Get the vector of distances
 #empirical_distances = np.array(list(movie_distances.values()))
+
+# Flatten the distances
+distances = distances.flatten()
 
 # Plot data density and cross-elasticity on same plot
 fig, ax1 = plt.subplots()
@@ -247,11 +236,11 @@ ax1.set_title('Cross-Elasticity of Distance')
 ax2 = ax1.twinx()
 
 # Plot the empirical distances
-ax2.hist(empirical_distances, bins=20, alpha=0.5, density=True)
+ax2.hist(distances, bins=20, alpha=0.5, density=True)
 ax2.set_xlabel('Distance')
 ax2.set_ylabel('Density of Empirical Distance')
 
-ax1.plot(distances, cross_elasticity, color='orange')
+ax1.plot(distance_grid, cross_elasticity, color='orange')
 ax1.set_ylabel('Cross-Elasticity of Distance')
 
 ax2.axvline(x=top_end, color='red', linestyle='--')
@@ -276,13 +265,13 @@ ax1.set_ylim(ymin - margin, ymax + margin)
 # Add title
 ax1.set_title('Cross-Elasticity of Distance')
 
-ax1.plot(distances, cross_elasticity, color='orange')
+ax1.plot(distance_grid, cross_elasticity, color='orange')
 ax1.set_ylabel('Cross-Elasticity of Distance')
 
 ax2 = ax1.twinx()
 
 # Plot the empirical distances
-ax2.hist(empirical_distances, bins=20, alpha=0.5, density=True)
+ax2.hist(distances, bins=20, alpha=0.5, density=True)
 ax2.set_xlabel('Distance')
 ax2.set_ylabel('Density of Empirical Distance')
 
