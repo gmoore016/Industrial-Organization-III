@@ -1,17 +1,12 @@
 import pandas as pd
 import numpy as np
-import pickle
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 from scipy.optimize import minimize
-from scipy.spatial.distance import cosine
 import matplotlib.pyplot as plt
-import statsmodels.api as sm
-import re
 import linearmodels as lm
-import time
-import statsmodels.formula.api as smf
 from stargazer.stargazer import Stargazer
+
+# For weeks greater than this, we truncate to this
+WEEK_THRESHOLD = 5
 
 # Load the embeddings from parquet
 tmdb = pd.read_parquet('../tmdb/embeddings/movie_descriptions.parquet')
@@ -72,13 +67,6 @@ distances = 1 - raw_embeddings @ raw_embeddings.T
 # Normalize distances
 distances = distances / np.max(distances)
 
-#reduced_embeddings = PCA(n_components=N_DIMS).fit_transform(raw_embeddings)
-
-#embedding_frame = pd.DataFrame(reduced_embeddings, columns=[f'pca_{i}' for i in range(N_DIMS)])
-
-#for i in range(N_DIMS):
-#    embeddings[f'pca_{i}'] = reduced_embeddings[:, i]
-
 # Load box office info
 guru = pd.read_parquet('../guru/data/weekly_sales.parquet')
 
@@ -107,6 +95,9 @@ plt.xlabel('Weeks Since Wide Release')
 plt.ylabel('Frequency')
 plt.title('Histogram of Weeks Since Wide Release')
 plt.savefig('output/weeks_histogram.png')
+
+# Truncate weeks to limit degrees of freedom
+guru['Weeks'] = np.minimum(guru['Weeks'], WEEK_THRESHOLD)
 
 # Limit sample to movies with trends and embeddings
 movies_with_trends = guru['movie_id'].unique()
@@ -188,65 +179,93 @@ for example in examples:
         print(f'{closest_movie_name}: {closest_distance}')
         distances_from_top_decile[closest_index] = np.inf
 
-# For each movie-date, compute the leave-one-out set of distances within the date
-gamma0 = []
-gamma1 = []
-gamma2 = []
-gamma3 = []
 
-for row in guru.itertuples():
-    movie_id = row.movie_id
-    date = row.Date
+def regress_given_lambda(age_coefficients, guru):
 
-    # Get index of movie_id in movie_ids
-    movie_index = np.where(movie_ids == movie_id)[0][0]
+    guru = guru.copy()
 
-    # Get all movies on the date
-    date_movies = guru[guru['Date'] == date]
-    
-    competitor_ids = date_movies['movie_id'].unique()
+    # For each movie-date, compute the leave-one-out set of distances within the date
+    gamma0 = []
+    gamma1 = []
+    gamma2 = []
+    gamma3 = []
 
-    # Compute the distances
-    competitor_distances = []
-    for comparison_movie in competitor_ids:
-        if movie_id == comparison_movie:
-            continue
+    for row in guru.itertuples():
 
-        comparison_index = np.where(movie_ids == comparison_movie)[0][0]
+        # Can I avoid redundant computation within a date?
+        movie_id = row.movie_id
+        date = row.Date
 
-        if np.isinf(distances[movie_index, comparison_index]):
-            print(f'Infinite distance between {movie_id} and {comparison_movie}')
+        # Get index of movie_id in movie_ids
+        movie_index = np.where(movie_ids == movie_id)[0][0]
 
-        # THIS IS WHERE I SHOULD WEIGHT BY AGE I THINK
-        competitor_distances.append(distances[movie_index, comparison_index])
+        # Get all movies on the date
+        date_movies = guru[guru['Date'] == date]
 
-    competitor_distances = np.array(competitor_distances)
+        competitor_distances = []
+        for comparison_movie in date_movies.itertuples():
+            # If looking at the same movie, skip
+            if movie_id == comparison_movie.movie_id:
+                continue
 
-    # No need to weight by log price since log price is constant
-    gamma0.append(len(competitor_distances))
-    gamma1.append(np.sum(competitor_distances))
-    gamma2.append(np.sum(competitor_distances ** 2))
-    gamma3.append(np.sum(competitor_distances ** 3))
+            # Get the relevant age coefficient
+            competitor_age_coef = age_coefficients[comparison_movie.Weeks]
 
-# Add to the guru data
-guru['gamma0'] = gamma0
-guru['gamma1'] = gamma1
-guru['gamma2'] = gamma2
-guru['gamma3'] = gamma3
+            comparison_index = np.where(movie_ids == comparison_movie.movie_id)[0][0]
 
-# Convert movie_id to categorical
-guru['movie_id'] = guru['movie_id'].astype('category')
+            if np.isinf(distances[movie_index, comparison_index]):
+                print(f'Infinite distance between {movie_id} and {comparison_movie.movie_id}')
 
-guru.set_index(['movie_id', 'Date'], inplace=True)
+            competitor_distances.append(competitor_age_coef * distances[movie_index, comparison_index])
 
-# Run regression of log earnings on distances and age
-formula = 'ln_earnings ~ gamma0 + gamma1 + gamma2 + gamma3 + C(Weeks) + EntityEffects + TimeEffects'
-reg = lm.PanelOLS.from_formula(formula=formula, data=guru, drop_absorbed=True)
 
-results = reg.fit(low_memory=False)
-print(results)
+        competitor_distances = np.array(competitor_distances)
 
-stargazer = Stargazer([results])
+        # No need to weight by log price since log price is constant
+        gamma0.append(len(competitor_distances))
+        gamma1.append(np.sum(competitor_distances))
+        gamma2.append(np.sum(competitor_distances ** 2))
+        gamma3.append(np.sum(competitor_distances ** 3))
+
+    # Add to the guru data
+    guru['gamma0'] = gamma0
+    guru['gamma1'] = gamma1
+    guru['gamma2'] = gamma2
+    guru['gamma3'] = gamma3
+
+    # Convert movie_id to categorical
+    guru['movie_id'] = guru['movie_id'].astype('category')
+
+    guru.set_index(['movie_id', 'Date'], inplace=True)
+
+    # For each movie, subtract off the relevant lambda coefficient
+    # This enforces our "weeks" coefficient is the same in the main regression as in the competition measure
+    guru['ln_earnings_adjusted'] = guru['ln_earnings'] - age_coefficients[guru['Weeks']]
+
+    # Run regression of log earnings on distances and age
+    formula = 'ln_earnings_adjusted ~ gamma0 + gamma1 + gamma2 + gamma3 + EntityEffects + TimeEffects'
+    reg = lm.PanelOLS.from_formula(formula=formula, data=guru, drop_absorbed=True)
+
+    results = reg.fit(low_memory=False)
+
+    return results
+
+
+# Per Nick: could include lambda in the regression and target that those coefficients are 1
+
+
+# Optimize the age coefficients
+print("Minimizing...")
+initial_guess = np.ones(WEEK_THRESHOLD + 1)
+minimization = minimize(lambda l: regress_given_lambda(l, guru).model_ss, initial_guess)
+
+# Get the optimal age coefficients
+age_coefficients = minimization.x
+optimal_model = regress_given_lambda(age_coefficients, guru)
+
+print(optimal_model)
+
+stargazer = Stargazer([optimal_model])
 stargazer.covariate_order(['gamma0', 'gamma1', 'gamma2', 'gamma3'])
 stargazer.add_custom_notes([
     "Omitting movie age, movie, and date fixed effects for brevity"
@@ -258,27 +277,15 @@ latex = stargazer.render_latex(
 with open('output/cosine_regression.tex', 'w') as f:
     f.write(latex)
 
-formula_w_genre = 'ln_earnings ~ gamma0 + gamma1 + gamma2 + gamma3 + genre_clash + C(Weeks) + EntityEffects + TimeEffects'
-reg_w_genre = lm.PanelOLS.from_formula(formula=formula_w_genre, data=guru, drop_absorbed=True)
-genre_results = reg_w_genre.fit(low_memory=False)
-print(genre_results)
-
 # Get coefficients on gamma1, gamma2, and gamma3
-gamma0_coefficient = results.params['gamma0']
-gamma1_coefficient = results.params['gamma1']
-gamma2_coefficient = results.params['gamma2']
-gamma3_coefficient = results.params['gamma3']
-
-gamma0_coefficient_genre = genre_results.params['gamma0']
-gamma1_coefficient_genre = genre_results.params['gamma1']
-gamma2_coefficient_genre = genre_results.params['gamma2']
-gamma3_coefficient_genre = genre_results.params['gamma3']
+gamma0_coefficient = optimal_model.params['gamma0']
+gamma1_coefficient = optimal_model.params['gamma1']
+gamma2_coefficient = optimal_model.params['gamma2']
+gamma3_coefficient = optimal_model.params['gamma3']
 
 # Plot cross-elasticities over distance
 distance_grid = np.linspace(0, 1, 100)
 cross_elasticity = gamma0_coefficient + gamma1_coefficient * distance_grid + gamma2_coefficient * distance_grid ** 2 + gamma3_coefficient * distance_grid ** 3
-
-cross_elasticity_genre = gamma0_coefficient_genre + gamma1_coefficient_genre * distance_grid + gamma2_coefficient_genre * distance_grid ** 2 + gamma3_coefficient_genre * distance_grid ** 3
 
 bottom_index = np.argmin(np.abs(distance_grid - bottom_end))
 top_index = np.argmin(np.abs(distance_grid - top_end))
@@ -286,9 +293,6 @@ top_index = np.argmin(np.abs(distance_grid - top_end))
 
 print(f'Cross-elasticity at bottom end of distance: {cross_elasticity[bottom_index]}')
 print(f'Cross-elasticity at top end of distance: {cross_elasticity[top_index]}')
-
-# Get the vector of distances
-#empirical_distances = np.array(list(movie_distances.values()))
 
 # Flatten the distances
 distances = distances.flatten()
@@ -347,35 +351,3 @@ ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
 fig.tight_layout()
 plt.savefig('output/cross_elasticity_zoom.png')
-
-fig, ax1 = plt.subplots()
-
-# Limit only to bottom 10% to top 10%
-ax1.set_xlim(bottom_end - .2, top_end + .2)
-
-ax1.set_ylim(0.50, 0.55)
-
-# Add title
-ax1.set_title('Cross-Elasticity of Distance')
-
-ax1.plot(distance_grid, cross_elasticity, color='orange')
-ax1.plot(distance_grid, cross_elasticity_genre, color='red')
-ax1.set_ylabel('Cross-Elasticity of Distance')
-
-ax2 = ax1.twinx()
-
-# Plot the empirical distances
-ax2.hist(distances, bins=20, alpha=0.5, density=True)
-ax2.set_xlabel('Distance')
-ax2.set_ylabel('Density of Empirical Distance')
-
-# Add vertical lines at the top and bottom ends
-ax2.axvline(x=top_end, color='red', linestyle='--')
-ax2.axvline(x=bottom_end, color='red', linestyle='--')
-
-# Add legend
-ax1.legend(['Original Spec', 'Genre Clash'], loc='upper right')
-
-fig.tight_layout()
-plt.savefig('output/cross_elasticity_genre.png')
-
