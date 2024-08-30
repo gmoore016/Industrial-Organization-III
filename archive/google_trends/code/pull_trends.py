@@ -9,7 +9,8 @@ from requests.exceptions import RetryError
 pytrends = TrendReq(
     hl='en-US', 
     tz=360,
-    retries=3,
+    retries=5,
+    backoff_factor = 1
 )
 
 # Load data from OpusData

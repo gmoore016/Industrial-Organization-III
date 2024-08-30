@@ -11,8 +11,7 @@ import re
 import linearmodels as lm
 import time
 import statsmodels.formula.api as smf
-
-N_DIMS = 6
+from stargazer.stargazer import Stargazer
 
 # Load the embeddings from parquet
 tmdb = pd.read_parquet('../tmdb/embeddings/movie_descriptions.parquet')
@@ -20,6 +19,46 @@ tmdb = pd.read_parquet('../tmdb/embeddings/movie_descriptions.parquet')
 # Drop if embeddings are null
 tmdb = tmdb.dropna(subset=['embedding'])
 tmdb = tmdb.reset_index(drop=True)
+
+# Filter to primary genre
+tmdb['tmdb_genre'] = tmdb['tmdb_genres'].apply(lambda x: x[0] if len(x) > 0 else None)
+
+genre_labels = {
+    28: 'Action',
+    12: 'Adventure',
+    16: 'Animation',
+    35: 'Comedy',
+    80: 'Crime',
+    99: 'Documentary',
+    18: 'Drama',
+    10751: 'Family',
+    14: 'Fantasy',
+    36: 'History',
+    27: 'Horror',
+    10402: 'Music',
+    9648: 'Mystery',
+    10749: 'Romance',
+    878: 'Science Fiction',
+    10770: 'TV Movie',
+    53: 'Thriller',
+    10752: 'War',
+    37: 'Western'
+}
+
+# Replace genre with label
+tmdb['tmdb_genre'] = tmdb['tmdb_genre'].map(genre_labels)
+
+# Create bar chart of genres
+genre_counts = tmdb['tmdb_genre'].value_counts()
+genre_counts.plot(kind='bar')
+plt.xlabel('Genre')
+plt.ylabel('Count')
+plt.title('Count of Movies by Genre')
+
+# Label the genres
+plt.xticks(ticks=range(len(genre_counts)), rotation=45)
+
+plt.savefig('output/genre_counts.png')
 
 # Get array of movie ids
 movie_ids = tmdb['movie_id'].copy()
@@ -46,6 +85,15 @@ guru = pd.read_parquet('../guru/data/weekly_sales.parquet')
 guru = guru.reset_index(drop=False)
 
 print(guru.dtypes)
+
+# Merge on movie genre
+guru = guru.merge(tmdb[['movie_id', 'tmdb_genre']], on='movie_id', how='left')
+
+# Create dummy for whether another movie of that genre is showing within each week
+guru['genre_clash'] = guru.groupby(['Date', 'tmdb_genre'])['movie_id'].transform('count') > 1
+
+# Get summary of genre_clash
+print(guru['genre_clash'].value_counts())
 
 # Compute log interest
 guru['ln_earnings'] = np.log(guru['Week Sales'])
@@ -169,6 +217,7 @@ for row in guru.itertuples():
         if np.isinf(distances[movie_index, comparison_index]):
             print(f'Infinite distance between {movie_id} and {comparison_movie}')
 
+        # THIS IS WHERE I SHOULD WEIGHT BY AGE I THINK
         competitor_distances.append(distances[movie_index, comparison_index])
 
     competitor_distances = np.array(competitor_distances)
@@ -190,20 +239,29 @@ guru['movie_id'] = guru['movie_id'].astype('category')
 
 guru.set_index(['movie_id', 'Date'], inplace=True)
 
-print(guru.head())
-
-# Print rows containing infinite values
-print(guru[guru.isin([np.nan, np.inf, -np.inf]).any(axis=1)])
-
 # Run regression of log earnings on distances and age
-X = guru[['ln_earnings', 'gamma0', 'gamma1', 'gamma2', 'gamma3', 'Weeks']]
-X['Weeks'] = X['Weeks'].astype('category')
-X = sm.add_constant(X)
 formula = 'ln_earnings ~ gamma0 + gamma1 + gamma2 + gamma3 + C(Weeks) + EntityEffects + TimeEffects'
-reg = lm.PanelOLS.from_formula(formula=formula, data=X, drop_absorbed=True)
+reg = lm.PanelOLS.from_formula(formula=formula, data=guru, drop_absorbed=True)
 
 results = reg.fit(low_memory=False)
 print(results)
+
+stargazer = Stargazer([results])
+stargazer.covariate_order(['gamma0', 'gamma1', 'gamma2', 'gamma3'])
+stargazer.add_custom_notes([
+    "Omitting movie age, movie, and date fixed effects for brevity"
+])
+latex = stargazer.render_latex(
+    escape=True,
+    only_tabular=True,
+)
+with open('output/cosine_regression.tex', 'w') as f:
+    f.write(latex)
+
+formula_w_genre = 'ln_earnings ~ gamma0 + gamma1 + gamma2 + gamma3 + genre_clash + C(Weeks) + EntityEffects + TimeEffects'
+reg_w_genre = lm.PanelOLS.from_formula(formula=formula_w_genre, data=guru, drop_absorbed=True)
+genre_results = reg_w_genre.fit(low_memory=False)
+print(genre_results)
 
 # Get coefficients on gamma1, gamma2, and gamma3
 gamma0_coefficient = results.params['gamma0']
@@ -211,9 +269,16 @@ gamma1_coefficient = results.params['gamma1']
 gamma2_coefficient = results.params['gamma2']
 gamma3_coefficient = results.params['gamma3']
 
+gamma0_coefficient_genre = genre_results.params['gamma0']
+gamma1_coefficient_genre = genre_results.params['gamma1']
+gamma2_coefficient_genre = genre_results.params['gamma2']
+gamma3_coefficient_genre = genre_results.params['gamma3']
+
 # Plot cross-elasticities over distance
 distance_grid = np.linspace(0, 1, 100)
 cross_elasticity = gamma0_coefficient + gamma1_coefficient * distance_grid + gamma2_coefficient * distance_grid ** 2 + gamma3_coefficient * distance_grid ** 3
+
+cross_elasticity_genre = gamma0_coefficient_genre + gamma1_coefficient_genre * distance_grid + gamma2_coefficient_genre * distance_grid ** 2 + gamma3_coefficient_genre * distance_grid ** 3
 
 bottom_index = np.argmin(np.abs(distance_grid - bottom_end))
 top_index = np.argmin(np.abs(distance_grid - top_end))
@@ -257,10 +322,11 @@ fig, ax1 = plt.subplots()
 ax1.set_xlim(bottom_end - .2, top_end + .2)
 
 # Bound the y axis based on range between bottom and top end
-ymin = np.min(cross_elasticity[bottom_index:top_index])
-ymax = np.max(cross_elasticity[bottom_index:top_index])
-margin = (ymax - ymin)
-ax1.set_ylim(ymin - margin, ymax + margin)
+#ymin = np.min(cross_elasticity[bottom_index:top_index])
+#ymax = np.max(cross_elasticity[bottom_index:top_index])
+#margin = (ymax - ymin)
+#ax1.set_ylim(ymin - margin, ymax + margin)
+ax1.set_ylim(0.50, 0.55)
 
 # Add title
 ax1.set_title('Cross-Elasticity of Distance')
@@ -281,3 +347,35 @@ ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
 fig.tight_layout()
 plt.savefig('output/cross_elasticity_zoom.png')
+
+fig, ax1 = plt.subplots()
+
+# Limit only to bottom 10% to top 10%
+ax1.set_xlim(bottom_end - .2, top_end + .2)
+
+ax1.set_ylim(0.50, 0.55)
+
+# Add title
+ax1.set_title('Cross-Elasticity of Distance')
+
+ax1.plot(distance_grid, cross_elasticity, color='orange')
+ax1.plot(distance_grid, cross_elasticity_genre, color='red')
+ax1.set_ylabel('Cross-Elasticity of Distance')
+
+ax2 = ax1.twinx()
+
+# Plot the empirical distances
+ax2.hist(distances, bins=20, alpha=0.5, density=True)
+ax2.set_xlabel('Distance')
+ax2.set_ylabel('Density of Empirical Distance')
+
+# Add vertical lines at the top and bottom ends
+ax2.axvline(x=top_end, color='red', linestyle='--')
+ax2.axvline(x=bottom_end, color='red', linestyle='--')
+
+# Add legend
+ax1.legend(['Original Spec', 'Genre Clash'], loc='upper right')
+
+fig.tight_layout()
+plt.savefig('output/cross_elasticity_genre.png')
+
