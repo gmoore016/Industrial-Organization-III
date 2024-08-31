@@ -4,6 +4,10 @@ from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 import linearmodels as lm
 from stargazer.stargazer import Stargazer
+import warnings
+
+# Turn off un-actionable FutureWarning
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # For weeks greater than this, we truncate to this
 WEEK_THRESHOLD = 5
@@ -58,6 +62,9 @@ plt.savefig('output/genre_counts.png')
 # Get array of movie ids
 movie_ids = tmdb['movie_id'].copy()
 
+# Create a map from movie_ids to indices
+movie_id_to_index = {movie_id: i for i, movie_id in enumerate(movie_ids)}
+
 raw_embeddings = np.array(tmdb['embedding'].values)
 raw_embeddings = np.array([np.array(x) for x in raw_embeddings])
 
@@ -98,6 +105,9 @@ plt.savefig('output/weeks_histogram.png')
 
 # Truncate weeks to limit degrees of freedom
 guru['Weeks'] = np.minimum(guru['Weeks'], WEEK_THRESHOLD)
+
+# Convert date to datetime
+guru['Date'] = pd.to_datetime(guru['Date'])
 
 # Limit sample to movies with trends and embeddings
 movies_with_trends = guru['movie_id'].unique()
@@ -180,6 +190,14 @@ for example in examples:
         distances_from_top_decile[closest_index] = np.inf
 
 
+# Per Nick: could include lambda in the regression and target that those coefficients are 1
+# For each date, pre-compute the values for each movie pair
+dates = guru['Date'].unique()
+date_movie_dict = {}
+for date in dates:
+    date_movies = guru[guru['Date'] == date]
+    date_movie_dict[date] = date_movies
+
 def regress_given_lambda(age_coefficients, guru):
 
     guru = guru.copy()
@@ -197,10 +215,15 @@ def regress_given_lambda(age_coefficients, guru):
         date = row.Date
 
         # Get index of movie_id in movie_ids
-        movie_index = np.where(movie_ids == movie_id)[0][0]
+        movie_index = movie_id_to_index[movie_id]
 
         # Get all movies on the date
-        date_movies = guru[guru['Date'] == date]
+        date_movies = date_movie_dict[date]
+
+
+
+
+
 
         competitor_distances = []
         for comparison_movie in date_movies.itertuples():
@@ -211,7 +234,7 @@ def regress_given_lambda(age_coefficients, guru):
             # Get the relevant age coefficient
             competitor_age_coef = age_coefficients[comparison_movie.Weeks]
 
-            comparison_index = np.where(movie_ids == comparison_movie.movie_id)[0][0]
+            comparison_index = movie_id_to_index[comparison_movie.movie_id]
 
             if np.isinf(distances[movie_index, comparison_index]):
                 print(f'Infinite distance between {movie_id} and {comparison_movie.movie_id}')
@@ -248,10 +271,10 @@ def regress_given_lambda(age_coefficients, guru):
 
     results = reg.fit(low_memory=False)
 
+    print(f'Lambda: {age_coefficients}')
+    print(f'RMSE: {results.model_ss}')
+
     return results
-
-
-# Per Nick: could include lambda in the regression and target that those coefficients are 1
 
 
 # Optimize the age coefficients
