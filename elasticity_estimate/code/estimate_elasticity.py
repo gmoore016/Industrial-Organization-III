@@ -5,12 +5,15 @@ import matplotlib.pyplot as plt
 import linearmodels as lm
 from stargazer.stargazer import Stargazer
 import warnings
+import cProfile
+import pstats
 
 # Turn off un-actionable FutureWarning
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # For weeks greater than this, we truncate to this
-WEEK_THRESHOLD = 5
+# Note zero-indexing; thus, this is actually the *fifth* week
+WEEK_THRESHOLD = 4
 
 # Load the embeddings from parquet
 tmdb = pd.read_parquet('../tmdb/embeddings/movie_descriptions.parquet')
@@ -102,6 +105,9 @@ plt.xlabel('Weeks Since Wide Release')
 plt.ylabel('Frequency')
 plt.title('Histogram of Weeks Since Wide Release')
 plt.savefig('output/weeks_histogram.png')
+
+# We want their weeks to also be zero-indexed so we can use it as an index
+guru['Weeks'] = guru['Weeks'] - 1
 
 # Truncate weeks to limit degrees of freedom
 guru['Weeks'] = np.minimum(guru['Weeks'], WEEK_THRESHOLD)
@@ -220,35 +226,18 @@ def regress_given_lambda(age_coefficients, guru):
         # Get all movies on the date
         date_movies = date_movie_dict[date]
 
-
-
-
-
-
-        competitor_distances = []
-        for comparison_movie in date_movies.itertuples():
-            # If looking at the same movie, skip
-            if movie_id == comparison_movie.movie_id:
-                continue
-
-            # Get the relevant age coefficient
-            competitor_age_coef = age_coefficients[comparison_movie.Weeks]
-
-            comparison_index = movie_id_to_index[comparison_movie.movie_id]
-
-            if np.isinf(distances[movie_index, comparison_index]):
-                print(f'Infinite distance between {movie_id} and {comparison_movie.movie_id}')
-
-            competitor_distances.append(competitor_age_coef * distances[movie_index, comparison_index])
-
-
-        competitor_distances = np.array(competitor_distances)
+        # Can ignore that self is included since distance(x, x) = 0
+        competitor_age_coefs = age_coefficients[date_movies['Weeks']]
+        competitor_indices = np.array([movie_id_to_index[movie_id] for movie_id in date_movies['movie_id']])
+        competitor_distances = distances[movie_index, competitor_indices]
+        weighted_distances = competitor_age_coefs * competitor_distances
 
         # No need to weight by log price since log price is constant
-        gamma0.append(len(competitor_distances))
-        gamma1.append(np.sum(competitor_distances))
-        gamma2.append(np.sum(competitor_distances ** 2))
-        gamma3.append(np.sum(competitor_distances ** 3))
+        # If using weighted distances, subtract off one for self
+        gamma0.append(len(weighted_distances) - 1)
+        gamma1.append(np.sum(weighted_distances))
+        gamma2.append(np.sum(weighted_distances ** 2))
+        gamma3.append(np.sum(weighted_distances ** 3))
 
     # Add to the guru data
     guru['gamma0'] = gamma0
@@ -276,6 +265,11 @@ def regress_given_lambda(age_coefficients, guru):
 
     return results
 
+
+# Profile the objective function
+#cProfile.run('regress_given_lambda(np.ones(WEEK_THRESHOLD + 1), guru)', 'output/profile.prof')
+#p = pstats.Stats('output/profile.prof')
+#p.strip_dirs().sort_stats('cumulative').print_stats(10)
 
 # Optimize the age coefficients
 print("Minimizing...")
