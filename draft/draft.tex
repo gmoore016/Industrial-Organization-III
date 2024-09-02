@@ -321,17 +321,31 @@ Note the magnitudes of these elasticity estimates are both quite similar and pre
 It is reasonable to ask how well these trends are explained by movie genre alone. When I include a dummy for ``only film of genre'' showing in a given weekend, I find it does not materially change these results. Down the line I will likely want to do something more intensive--e.g., compute how similar genres are, then do something with ``genre distance'' alone rather than using the text information. Even if the genre \emph{can} explain much of the variation, I still believe this method is a contribution in that researchers are more likely to have raw, uncleaned text data than to have properly coded genre data. 
 
 
-\section{MovieLens}
+\section{Benchmarking: Collaborative Filtering}
 
-While the use of text descriptions as a proxy for substitition patterns is appealing, we cannot know from only the price and quantity data we have whether filmgoers are \emph{actually} substituting between the movies we think they are. To address this, I intend to use the MovieLens review dataset to estimate movie similarity based on \emph{user preferences} rather than text descriptions. 
+``Recommendation engines'' are a common tool in the tech world, used to predict what products a user will like. In some sense, we can think of this project as harnessing a new type of recommendation engine, identifying movies which are likely to be substitutable. Algorithms in this space are broadly divided into two categories: collaborative filtering and content-based filtering. The text embeddings used above are a form of content-based filtering: using the ``content'' of the movie (its text description) to predict its appeal. However, one way to benchmark the quality of this approach is to compare them to the results of a collaborative filtering algorithm. Unlike content-based filtering, collaborative filtering doesn't include any information about the content of a movie; instead, it uses the preferences of other users to predict what a user will like. For example, if I like \emph{The Dark Knight}, and most people who like \emph{The Dark Knight} also like \emph{Inception}, a collaborative filtering algorithm would predict I would like \emph{Inception}. 
 
-The fundamental assumption is that if many people rate both movie A and movie B distinctively highly, we can infer that the two movies are similar (and thus, substitutable). For example, if the majority of people who give \emph{Star Wars} five stars also give \emph{Star Trek} five stars (and vice versa), we can infer that the two movies are substitutable. 
+MovieLens produces a public-use movie review dataset; it contains more than 25 million (CHECK THIS NUMBER) 1-to-5 star reviews of movies by users. Moreover, movies are tagged with their TMDB ID; that is, the same ID I use to collect movie descriptions. Thus, for any given pair of movies, I can compute similarity under both the text-based and collaborative filtering methods. If the two measures are correlated, I can be more confident that the patterns I see in the text-based model are not coincidental.
 
-Note this is not \emph{totally} correct. What we really want to do is find pairs of movies with high \emph{idiosyncratic} draws--everyone agrees that \emph{Citizen Kane} is a good movie, but if we can find movies most people think are three stars but the same people think are five stars, we can infer that the two movies are substitutable.
+\subsection{UV Decomposition}
 
-There are many textbook recommendation algorithms I could use as benchmarks. The most promising is likely some form of topic-specific PageRank. 
+For my collaborative filtering algorithm, I use UV-decomposition for matrix completion as described in Leskovec (CITE HERE). Suppose I have an $n \times m$ matrix of movie reviews, with $n$ users and $m$ reviews. However, the matrix is generally sparse; most users have not reviewed most movies. UV-decomposition decomposes this matrix into two thin matrices $U$ and $V$ such that $UV^T$ approximates the original matrix. This is a cousin of singular value decomposition, however relaxes the orthogonality constraint common in those approaches. By minimizing the sum of squared errors among projections in the \emph{observed} entries of the matrix, we hope to project the \emph{unobserved} entries of the matrix as well.
 
-Once I have my review-based measure of movie similarity, I can plot this measure of similarity against my text-based measure of similarity. If the two measures are correlated, I can be more confident that the patterns I see in the text-based model are not coincidental. 
+Note that UV decomposition relies on a contraction mapping: for a fixed $V$ matrix, we choose the $U$ matrix which minimizes the sum of squared errors. We then fix that $U$ matrix and choose an optimal $V$ matrix, iterating this process until convergence. This procedure is guaranteed to converge, though it may converge to a local minimum. Thus, we generally initialize the $U$ and $V$ matrices with random values, then run the algorithm multiple times to ensure we find something approximating the global minimum. 
+
+With our decomposition in hand, it is simple to assess whether two movies are ``similar:'' we simply compute the cosine similarity of the projected reviews. If two movies have similar projected reviews, we can infer they appeal to similar audiences, and so are likely substitutable. The virtue of UV-decomposition is it works \emph{even when the movies have no reviewers in common}; that is, it can infer similarity between movies which have never been reviewed by the same person.
+
+\subsection{Validation}
+
+Rather than blindly trusting our decomposition, we can validate it by comparing predicted reviews against actual reviews. I hold out 5\% of the reviews as a test set, then train on the remaining 95\%. I then predict the held-out reviews using the trained UV decomposition and compare the predicted reviews to the actual reviews. If the predicted reviews are highly correlated with the actual reviews, we can be more confident in the UV decomposition.
+
+The relationship between predicted and actual reviews is visible in figure FIGURE. As you can see, there exists a strong positive correlation between the predicted reviews and the actual reviews. The strength of this correlation varies based on the number of reviews a movie has received in the data. Points are colored by the number of reviews their movie received; as is visible in the figure, movies with few reviews have a quite weak correlation between predicted and actual reviews. However, once we trim off the least popular 5\% of movies, the correlation between predicted and actual reviews becomes quite a bit stronger. This makes sense: our model is (as expected) better at predicting a movie's appeal when we have more data on that movie.
+
+These results affirm for me that our collaborative filtering results are likely to be quite predictive of a movie's appeal. Thus, if my text-based model identifies the same pairs of movies as substitutable, I can be more confident that the patterns I see reflect consumers' true preferences. 
+
+\subsection{Comparison}
+
+LOREM IPSUM
 
 
 \section{Conclusion}
