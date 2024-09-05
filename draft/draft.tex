@@ -325,7 +325,43 @@ It is reasonable to ask how well these trends are explained by movie genre alone
 
 ``Recommendation engines'' are a common tool in the tech world, used to predict what products a user will like. In some sense, we can think of this project as harnessing a new type of recommendation engine, identifying movies which are likely to be substitutable. Algorithms in this space are broadly divided into two categories: collaborative filtering and content-based filtering. The text embeddings used above are a form of content-based filtering: using the ``content'' of the movie (its text description) to predict its appeal. However, one way to benchmark the quality of this approach is to compare them to the results of a collaborative filtering algorithm. Unlike content-based filtering, collaborative filtering doesn't include any information about the content of a movie; instead, it uses the preferences of other users to predict what a user will like. For example, if I like \emph{The Dark Knight}, and most people who like \emph{The Dark Knight} also like \emph{Inception}, a collaborative filtering algorithm would predict I would like \emph{Inception}. 
 
-MovieLens produces a public-use movie review dataset; it contains more than 25 million (CHECK THIS NUMBER) 1-to-5 star reviews of movies by users. Moreover, movies are tagged with their TMDB ID; that is, the same ID I use to collect movie descriptions. Thus, for any given pair of movies, I can compute similarity under both the text-based and collaborative filtering methods. If the two measures are correlated, I can be more confident that the patterns I see in the text-based model are not coincidental. I validate my text-based model by comparing it against two collaborative filtering algorithms: topic-specific PageRank and UV decomposition.
+MovieLens produces a public-use movie review dataset; it contains more than 25 million 1-to-5 star reviews of movies by users. Moreover, movies are tagged with their TMDB ID; that is, the same ID I use to collect movie descriptions. Thus, for any given pair of movies, I can compute similarity under both the text-based and collaborative filtering methods. If the two measures are correlated, I can be more confident that the patterns I see in the text-based model are not coincidental. I validate my text-based model by comparing it against two frontier collaborative filtering algorithms: topic-specific PageRank and UV decomposition.
+
+\subsection{UV Decomposition}
+
+I implement UV-decomposition for matrix completion as described in Leskovec (CITE HERE).\footnote{Note the algorithm described in the textbook optimizes element-wise, which is quite slow. Based on my own vector calculus, I've implemented \emph{matrix-wide} optimization, which seems to work. However, I have not found a reference for this approach anywhere; I emailed Professor Leskovec to confirm the result is the same, but have not heard back.} Suppose I have an $n \times m$ matrix of movie reviews, with $n$ users and $m$ reviews. However, the matrix is generally sparse; most users have not reviewed most movies. UV-decomposition decomposes this matrix into two thin matrices $U$ and $V$ such that $UV^T$ approximates the original matrix. This is a cousin of singular value decomposition, however relaxes the orthogonality constraint common in those approaches. By minimizing the sum of squared errors among projections in the \emph{observed} entries of the matrix, we hope to project the \emph{unobserved} entries of the matrix as well. 
+
+Note that UV decomposition relies on a contraction mapping: for a fixed $V$ matrix, we choose the $U$ matrix which minimizes the sum of squared errors. We then fix that $U$ matrix and choose an optimal $V$ matrix, iterating this process until convergence. This procedure is guaranteed to converge, though it may converge to a local minimum. Thus, we generally initialize the $U$ and $V$ matrices with random values, then run the algorithm multiple times to ensure we find something approximating the global minimum. 
+
+With our decomposition in hand, it is straightforward to assess whether two movies are ``similar:'' we simply compute the cosine similarity of the projected reviews. If two movies have similar projected reviews, we can infer they appeal to similar audiences, and so are likely substitutable. The virtue of UV-decomposition is it works \emph{even when the movies have no reviewers in common}; that is, it can infer similarity between movies which have never been reviewed by the same person.
+
+Rather than blindly trusting our decomposition, we can validate it by comparing predicted reviews against actual reviews. I hold out 5\% of the reviews as a test set, then train on the remaining 95\%. If the predicted reviews for this held-out set are highly correlated with the actual reviews, we can be more confident in the UV decomposition.
+
+\begin{figure}
+    \begin{center}
+    \includegraphics[width=\textwidth]{../movielens/output/uv_decomp_out_of_sample.png}
+    \caption{Actual vs. Predicted Reviews by Number of Reviews}
+    \label{fig:actual_vs_predicted}
+    \end{center}
+\end{figure}
+
+As we might expect, the UV decomposition is better at predicting reviews for movies with more reviews. To assess the size of this effect, I regress the true review on the predicted review for various thresholds of review count. If the threshold is low, we're including movies with fewer reviews in our prediction set; if the threshold is high, we're looking only at hits like \emph{Star Wars.} The results of these regressions are visible in figure \ref{fig:uv_threshold}.
+
+For any value of the review count threshold, the coefficient on predicted reviews is positive and significant. This suggests that the UV decomposition is quite predictive of a movie's appeal. Moreover, the coefficient is increasing in the review count threshold; that is, the UV decomposition is better at predicting reviews for movies with more reviews. This is as expected; the more data we have on a movie, the better we can predict its appeal.
+
+These results affirm for me that our collaborative filtering results are likely to be quite predictive of a movie's appeal. Thus, if my text-based model identifies the same pairs of movies as substitutable, I can be more confident that the patterns I see reflect consumers' true preferences. 
+
+Assured that the UV decomposition results are valid, I attempt to predict the cosine similarity of the UV decomposition's predicted reviews using the cosine similarity of the text embeddings. Again we expect the quality of these predictions to vary with the volume of the data; thus, I plot the coefficient of this regression for various thresholds of review count as above. The results of these regressions are visible in figure \ref{fig:uv_threshold}.
+
+\begin{figure}
+    \begin{center}
+    \includegraphics[width=\textwidth]{../movielens/output/UV_decomp_coef_vs_review_count.png}
+    \caption{Coefficient of UV Decomposition on Text Similarity by Threshold}
+    \label{fig:uv_threshold}
+    \end{center}
+\end{figure}
+
+For movies with relatively few reviews, the coefficient on text similarity is insignificant; this is to be expected, as for these movies UV decomposition struggles to capture anything of meaning. However, as the review count threshold increases, the coefficient on text similarity becomes increasingly positive and significant. This suggests that as UV decomposition becomes more accurate, it looks increasingly like our text-based cosine similarity measure. This is a strong validation of my text-based model; the patterns I see in the text embeddings are not coincidental, but reflect consumers' true preferences. The quality of the match begins to decline when the review threshold becomes too high; however, this is not a fault with my method but with the decomposition, as at these high standards the number of movies with sufficient views falls to less than 10, producing fewer than 100 pairs of movies. 
 
 \subsection{Topic-Specific PageRank}
 
@@ -357,21 +393,7 @@ This plot shows that the coefficient on text similarity for predicting TSPR is c
 
 Moreover, while the number of pairs included remains large enough to have useful confidence intervals, the coefficient is increasing in the threshold value. If we think TSPR increases in quality with data, this suggests that as TSPR becomes higher quality, it looks increasingly like our text-based cosine similarity measure. This exercise highlights an additional strength of my cosine similarity measure; while collaborative filtering needs tens of thousands of reviews per movie to generate useful predictions, the embeddings-based method can generate useful predictions with only a few sentences of text.
 
-\subsection{UV Decomposition}
 
-I implement UV-decomposition for matrix completion as described in Leskovec (CITE HERE). Suppose I have an $n \times m$ matrix of movie reviews, with $n$ users and $m$ reviews. However, the matrix is generally sparse; most users have not reviewed most movies. UV-decomposition decomposes this matrix into two thin matrices $U$ and $V$ such that $UV^T$ approximates the original matrix. This is a cousin of singular value decomposition, however relaxes the orthogonality constraint common in those approaches. By minimizing the sum of squared errors among projections in the \emph{observed} entries of the matrix, we hope to project the \emph{unobserved} entries of the matrix as well.
-
-Note that UV decomposition relies on a contraction mapping: for a fixed $V$ matrix, we choose the $U$ matrix which minimizes the sum of squared errors. We then fix that $U$ matrix and choose an optimal $V$ matrix, iterating this process until convergence. This procedure is guaranteed to converge, though it may converge to a local minimum. Thus, we generally initialize the $U$ and $V$ matrices with random values, then run the algorithm multiple times to ensure we find something approximating the global minimum. 
-
-With our decomposition in hand, it is simple to assess whether two movies are ``similar:'' we simply compute the cosine similarity of the projected reviews. If two movies have similar projected reviews, we can infer they appeal to similar audiences, and so are likely substitutable. The virtue of UV-decomposition is it works \emph{even when the movies have no reviewers in common}; that is, it can infer similarity between movies which have never been reviewed by the same person.
-
-Rather than blindly trusting our decomposition, we can validate it by comparing predicted reviews against actual reviews. I hold out 5\% of the reviews as a test set, then train on the remaining 95\%. I then predict the held-out reviews using the trained UV decomposition and compare the predicted reviews to the actual reviews. If the predicted reviews are highly correlated with the actual reviews, we can be more confident in the UV decomposition.
-
-The relationship between predicted and actual reviews is visible in figure FIGURE. As you can see, there exists a strong positive correlation between the predicted reviews and the actual reviews. The strength of this correlation varies based on the number of reviews a movie has received in the data. Points are colored by the number of reviews their movie received; as is visible in the figure, movies with few reviews have a quite weak correlation between predicted and actual reviews. However, once we trim off the least popular 5\% of movies, the correlation between predicted and actual reviews becomes quite a bit stronger. This makes sense: our model is (as expected) better at predicting a movie's appeal when we have more data on that movie.
-
-These results affirm for me that our collaborative filtering results are likely to be quite predictive of a movie's appeal. Thus, if my text-based model identifies the same pairs of movies as substitutable, I can be more confident that the patterns I see reflect consumers' true preferences. 
-
-I find XXXXXX
 
 
 
