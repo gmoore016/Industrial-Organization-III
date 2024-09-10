@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from scipy.optimize import minimize
+from optimparallel import minimize_parallel
 import matplotlib.pyplot as plt
 import linearmodels as lm
 from stargazer.stargazer import Stargazer
@@ -62,6 +63,9 @@ plt.xticks(ticks=range(len(genre_counts)), rotation=45)
 
 plt.savefig('output/genre_counts.png')
 
+# Clear plot
+plt.clf()
+
 # Get array of movie ids
 movie_ids = tmdb['movie_id'].copy()
 
@@ -82,16 +86,11 @@ guru = pd.read_parquet('../guru/data/weekly_sales.parquet')
 
 guru = guru.reset_index(drop=False)
 
-print(guru.dtypes)
-
 # Merge on movie genre
 guru = guru.merge(tmdb[['movie_id', 'tmdb_genre']], on='movie_id', how='left')
 
 # Create dummy for whether another movie of that genre is showing within each week
-guru['genre_clash'] = guru.groupby(['Date', 'tmdb_genre'])['movie_id'].transform('count') > 1
-
-# Get summary of genre_clash
-print(guru['genre_clash'].value_counts())
+# guru['genre_clash'] = guru.groupby(['Date', 'tmdb_genre'])['movie_id'].transform('count') > 1
 
 # Compute log interest
 guru['ln_earnings'] = np.log(guru['Week Sales'])
@@ -99,11 +98,13 @@ guru['ln_earnings'] = np.log(guru['Week Sales'])
 # Drop if missing weeks
 guru = guru.dropna(subset=['Weeks'])
 
-# Histogram of weeks since release
+print(guru['Weeks'].describe())
+
+# Create histogram of weeks since release
 plt.hist(guru['Weeks'], bins=20)
-plt.xlabel('Weeks Since Wide Release')
-plt.ylabel('Frequency')
-plt.title('Histogram of Weeks Since Wide Release')
+plt.xlabel('Weeks Since Release')
+plt.ylabel('Count')
+plt.title('Histogram of Weeks Since Release')
 plt.savefig('output/weeks_histogram.png')
 
 # We want their weeks to also be zero-indexed so we can use it as an index
@@ -230,14 +231,14 @@ def regress_given_lambda(age_coefficients, guru):
         competitor_age_coefs = age_coefficients[date_movies['Weeks']]
         competitor_indices = np.array([movie_id_to_index[movie_id] for movie_id in date_movies['movie_id']])
         competitor_distances = distances[movie_index, competitor_indices]
-        weighted_distances = competitor_age_coefs * competitor_distances
 
         # No need to weight by log price since log price is constant
         # If using weighted distances, subtract off one for self
-        gamma0.append(len(weighted_distances) - 1)
-        gamma1.append(np.sum(weighted_distances))
-        gamma2.append(np.sum(weighted_distances ** 2))
-        gamma3.append(np.sum(weighted_distances ** 3))
+        # Don't want to raise age coefficient to power when computing distances
+        gamma0.append(len(competitor_distances) - 1)
+        gamma1.append(np.sum(competitor_age_coefs * competitor_distances))
+        gamma2.append(np.sum(competitor_age_coefs * (competitor_distances ** 2)))
+        gamma3.append(np.sum(competitor_age_coefs * (competitor_distances ** 3)))
 
     # Add to the guru data
     guru['gamma0'] = gamma0
@@ -250,12 +251,9 @@ def regress_given_lambda(age_coefficients, guru):
 
     guru.set_index(['movie_id', 'Date'], inplace=True)
 
-    # For each movie, subtract off the relevant lambda coefficient
-    # This enforces our "weeks" coefficient is the same in the main regression as in the competition measure
-    guru['ln_earnings_adjusted'] = guru['ln_earnings'] - age_coefficients[guru['Weeks']]
-
     # Run regression of log earnings on distances and age
-    formula = 'ln_earnings_adjusted ~ gamma0 + gamma1 + gamma2 + gamma3 + EntityEffects + TimeEffects'
+    # NOTE: WITHIN A WEEKEND, THERE IS NO VARIATION IN THE # OF MOVIES. THUS, GAMMA0 GETS OMITTED
+    formula = 'ln_earnings ~ gamma1 + gamma2 + gamma3 + C(Weeks) + EntityEffects + TimeEffects'
     reg = lm.PanelOLS.from_formula(formula=formula, data=guru, drop_absorbed=True)
 
     results = reg.fit(low_memory=False)
@@ -264,6 +262,13 @@ def regress_given_lambda(age_coefficients, guru):
     print(f'RMSE: {results.model_ss}')
 
     return results
+
+def compute_model_error(age_coefficients, guru):
+
+    # Run the regression
+    model = regress_given_lambda(age_coefficients, guru)
+
+    return model.model_ss
 
 
 # Profile the objective function
@@ -274,7 +279,12 @@ def regress_given_lambda(age_coefficients, guru):
 # Optimize the age coefficients
 print("Minimizing...")
 initial_guess = np.ones(WEEK_THRESHOLD + 1)
-minimization = minimize(lambda l: regress_given_lambda(l, guru).model_ss, initial_guess)
+#minimization = minimize_parallel(
+minimization = minimize(
+    fun = compute_model_error, 
+    x0 = initial_guess,
+    args = (guru,),
+)
 
 # Get the optimal age coefficients
 age_coefficients = minimization.x
