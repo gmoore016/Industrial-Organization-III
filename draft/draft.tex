@@ -4,6 +4,7 @@
 \usepackage{graphicx}
 \usepackage[style=authoryear]{biblatex}
 \usepackage{booktabs}
+\usepackage{amsmath}
 
 % Double space
 \usepackage{setspace}
@@ -392,6 +393,60 @@ A common weakness of collaborative filtering algorithms like TSPR is that they r
 This plot shows that the coefficient on text similarity for predicting TSPR is consistently and significantly positive for nearly all thresholds. Thus, the content of the text embeddings \emph{does} seem to have predictive power for which movies are similar based on revealed preference; that is, the patterns I see in the text-based model are not coincidental and reflect consumers' true preferences. 
 
 Moreover, while the number of pairs included remains large enough to have useful confidence intervals, the coefficient is increasing in the threshold value. If we think TSPR increases in quality with data, this suggests that as TSPR becomes higher quality, it looks increasingly like our text-based cosine similarity measure. This exercise highlights an additional strength of my cosine similarity measure; while collaborative filtering needs tens of thousands of reviews per movie to generate useful predictions, the embeddings-based method can generate useful predictions with only a few sentences of text.
+
+\section{Revised Model: Unified Lambda and Fixed Effect}
+
+Per conversations in the spring (and with Liran this week), I want to include age in the cross-elasticity term as well. That is, if I'm releasing Star Trek, having Star Wars as my competitor is more important if Star Wars released recently than if it is old. Moreover, we estimate fixed effects for each movie; these fixed effects are likely important for competitors as well, not just for estimating own demand. Thus, I should include the $\alpha_i$ fixed effect in the cross-elasticity term as well.
+
+To do this, I've revamped my demand model as follows. Suppose we wish to estimate revenue for movie $i$ in time $t$. This is a function $\phi$ of the movie's quality $\delta_{it}$ and its competitors' qualities $\delta_{-it}$, as well as a fixed effect for the weekend $\alpha_t$ (e.g., many people go see movies on Memorial Day). This gives the following equation:
+
+$$\ln(q_{it}) = \phi(\delta_{it}, \delta_{-it}) + \alpha_t$$
+
+A movie's quality is given by a combination of a fixed effect $\alpha_i$, an age fixed effect $\lambda_{t - r(i)}$, and an idiosyncratic shock $\xi_{it}$:
+
+$$\delta_{it} = \alpha_i + \lambda_{t - r(i)} + \xi_{it}$$
+
+Thus, we can rewrite our specification above as:
+
+$$\ln(q_{it}) = \phi(\alpha_i + \lambda_{t - r(i)} + \xi_{it}, \alpha_{-i} + \lambda_{t - r(-i)} + \xi_{-it}) + \alpha_t$$
+
+We'll let the influence of competitors on movie $i$ be a function of their quality interacted with a flexible function of distance $f$. Intuitively $f$ should be negative and decrease in magnitude with distance (such that competition reduces quantity sold and more distant movies are less influential), but I don't impose this. The rest of our specification will be linear. Thus, we can rewrite our demand equation as:
+
+$$\ln(q_{it}) = \alpha_0 + \underbrace{\alpha_i + \lambda_{t - r(i)} + \xi_{it}}_{\delta_{it}} + \sum_{j \neq i} f(d_{ij}) \cdot \underbrace{(\alpha_j + \lambda_{t - r(j)} + \xi_{jt})}_{\delta_{jt}} + \alpha_t$$
+
+As it is written, this model is very difficult to estimate for multiple reasons. $\alpha_i$ appears not just in its own demand, but in competitors' as well; thus, we cannot use simple demeaning to absorb these fixed effects. Moreover, the $f$ function interacts multiplicatively with the $\delta_{jt}$ terms, making matrix inversion by itself useless. With some clever rearranging, however, I believe this model becomes more tractable:
+
+\begin{align*}
+    \ln(q_{it}) = \alpha_0 &+ \alpha_i + \sum_{j \neq i} f(d_{ij}) \alpha_j \\
+    &+ \lambda_{t - r(i)} \left(1 + \sum_{j \neq i}^{r(j) = r(i)} f(d_{ij})\right) + \sum_{r(k) \neq r(i)} \left(\lambda_{t - r(j)} \left(\sum_{j}^{r(j) = r(k)} f(d_{ij}) \right)\right) \\
+    &+ \alpha_t \\
+    &+ \xi_{it} + \sum_{j \neq i} f(d_{ij}) \xi_{jt}
+\end{align*}
+
+Thus, conditional on the values of $f(d_{ij})$, each movie's log quantity is a linear function of it and its competitors' fixed effects and ages plus a fixed effect for the relevant weekend. Thus, the $\lambda$ and $\alpha$ coefficients are estimable using OLS. 
+
+As an example, consider what our matrix will look like in the following market. Movie 1 released this week. Movie 2 released this week as well, while movie 3 released last week. I omit time fixed effects in this example since we focus on a single period; similarly, I omit time subscripts on the quantities. In this case, we will have the following data matrix where values in ``movie'' columns are used to estimate $\alpha$ values while ``age'' columns are used to estimate $\lambda$ values:
+
+\begin{center}
+
+\begin{tabular}{cccccc}
+    ln(Quantity) & Movie 1 & Movie 2 & Movie 3 & Age 0 & Age 1 \\
+    $\ln(q_{1})$ & 1 & $f(d_{12})$ & $f(d_{13})$ & $1 + f(d_{12})$ & $f(d_{13})$ \\
+    $\ln(q_{2})$ & $f(d_{12})$ & 1 & $f(d_{23})$ & $1 + f(d_{12})$ & $f(d_{23})$ \\
+    $\ln(q_{3})$ & $f(d_{13})$ & $f(d_{23})$ & 1 & $f(d_{13}) + f(d_{23})$ & $1$ 
+\end{tabular}
+
+\end{center}
+
+Regressing quantity on the given Xs identifies the coefficients for $\alpha_1$, $\alpha_2$, $\alpha_3$, $\lambda_0$, and $\lambda_1$ via the first through fifth columns, respectively. These results make some amount of intuitive sense; if $\ln(q_1)$ performs below expectations, one explanation is that $\alpha_2$ is large--represented by a large coefficient on the (negative) $f(d_{12})$.
+
+Note the above is all taking $f$ as given. Let $f$ be a cubic polynomial in distance; that is: 
+
+$$f(d_{ij}) = \gamma_0 + \gamma_1 d_{ij} + \gamma_2 d_{ij}^2 + \gamma_3 d_{ij}^3$$
+
+This follows Magnolfi's specification, and allows for flexible sign, monotonicity, and concavity. Thus, if the final result \emph{does} exhibit those properties, we know it is coming from the data rather than baked into the model.
+
+Since the $\lambda$ and $\alpha$ coefficients in the model above interact multiplicatively with the $\gamma$ coefficients, we cannot estimate $\gamma$ linearly at the same time that we estimate $\lambda$ and $\alpha$ linearly. Instead, I will choose a $\gamma$ coefficient vector and estimate $\lambda$ and $\alpha$ given that $\gamma$ vector using OLS. We know the resulting model minimizes mean squared error \emph{in the set of models using this $\gamma$}. If I then optimize the $\gamma$ vector to minimize mean squared error of these optimized models, I search across the lower envelope and know my final model minimizes mean squared error over the whole $\gamma, \alpha, \lambda$ space.
 
 
 
