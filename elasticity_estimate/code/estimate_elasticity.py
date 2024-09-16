@@ -1,381 +1,428 @@
 import pandas as pd
 import numpy as np
-import pickle
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 from scipy.optimize import minimize
-from scipy.spatial.distance import cosine
+from optimparallel import minimize_parallel
 import matplotlib.pyplot as plt
-import statsmodels.api as sm
-import re
 import linearmodels as lm
-import time
-import statsmodels.formula.api as smf
 from stargazer.stargazer import Stargazer
+import warnings
+import cProfile
+import pstats
 
-# Load the embeddings from parquet
-tmdb = pd.read_parquet('../tmdb/embeddings/movie_descriptions.parquet')
+# Turn off un-actionable FutureWarning
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
-# Drop if embeddings are null
-tmdb = tmdb.dropna(subset=['embedding'])
-tmdb = tmdb.reset_index(drop=True)
+# For weeks greater than this, we truncate to this
+# Note zero-indexing; thus, this is actually the *fifth* week
+WEEK_THRESHOLD = 4
 
-# Filter to primary genre
-tmdb['tmdb_genre'] = tmdb['tmdb_genres'].apply(lambda x: x[0] if len(x) > 0 else None)
+# Set equal to 1 if normalizing the first coefficient to 1
+PREFIX = []
+INITIAL_GUESS = [1, .8, .6, .4, .2]
 
-genre_labels = {
-    28: 'Action',
-    12: 'Adventure',
-    16: 'Animation',
-    35: 'Comedy',
-    80: 'Crime',
-    99: 'Documentary',
-    18: 'Drama',
-    10751: 'Family',
-    14: 'Fantasy',
-    36: 'History',
-    27: 'Horror',
-    10402: 'Music',
-    9648: 'Mystery',
-    10749: 'Romance',
-    878: 'Science Fiction',
-    10770: 'TV Movie',
-    53: 'Thriller',
-    10752: 'War',
-    37: 'Western'
-}
+# Regression specification
+REG_FORMULA = 'ln_earnings_adjusted ~ 1 + gamma0 + gamma1 + gamma2 + gamma3 + EntityEffects + TimeEffects'
 
-# Replace genre with label
-tmdb['tmdb_genre'] = tmdb['tmdb_genre'].map(genre_labels)
+def regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances):
+    """Function for nonlinear optimization of age coefficients"""
 
-# Create bar chart of genres
-genre_counts = tmdb['tmdb_genre'].value_counts()
-genre_counts.plot(kind='bar')
-plt.xlabel('Genre')
-plt.ylabel('Count')
-plt.title('Count of Movies by Genre')
+    guru = guru.copy()
 
-# Label the genres
-plt.xticks(ticks=range(len(genre_counts)), rotation=45)
+    # For each movie-date, compute the leave-one-out set of distances within the date
+    gamma0 = []
+    gamma1 = []
+    gamma2 = []
+    gamma3 = []
 
-plt.savefig('output/genre_counts.png')
+    for row in guru.itertuples():
+
+        # Can I avoid redundant computation within a date?
+        movie_id = row.movie_id
+        date = row.Date
 
-# Get array of movie ids
-movie_ids = tmdb['movie_id'].copy()
+        # Get index of movie_id in movie_ids
+        movie_index = movie_id_to_index[movie_id]
+
+        # Get all movies on the date
+        date_movies = date_movie_dict[date]
+
+        # Can ignore that self is included since distance(x, x) = 0
+        competitor_age_coefs = age_coefficients[date_movies['Weeks']]
+        competitor_indices = np.array([movie_id_to_index[movie_id] for movie_id in date_movies['movie_id']])
+        competitor_distances = distances[movie_index, competitor_indices]
+
+        # No need to weight by log price since log price is constant
+        # Don't want to raise age coefficient to power when computing distances
+        # Need to subtract off the own-age coefficient
+        gamma0.append(np.sum((1 / competitor_age_coefs) * np.ones(len(competitor_distances))) - (1 / age_coefficients[row.Weeks]))
+        gamma1.append(np.sum((1 / competitor_age_coefs) * competitor_distances))
+        gamma2.append(np.sum((1 / competitor_age_coefs) * (competitor_distances ** 2)))
+        gamma3.append(np.sum((1 / competitor_age_coefs) * (competitor_distances ** 3)))
 
-raw_embeddings = np.array(tmdb['embedding'].values)
-raw_embeddings = np.array([np.array(x) for x in raw_embeddings])
+    # Add to the guru data
+    guru['gamma0'] = gamma0
+    guru['gamma1'] = gamma1
+    guru['gamma2'] = gamma2
+    guru['gamma3'] = gamma3
 
-# Create distance matrix by taking dot product of embeddings
-distances = 1 - raw_embeddings @ raw_embeddings.T
+    # Convert date to month and year
+    guru['month'] = guru['Date'].dt.month
+    guru['year'] = guru['Date'].dt.year
 
-# Normalize distances
-distances = distances / np.max(distances)
+    # Convert movie_id to categorical
+    guru['movie_id'] = guru['movie_id'].astype('category')
 
-#reduced_embeddings = PCA(n_components=N_DIMS).fit_transform(raw_embeddings)
+    guru.set_index(['movie_id', 'Date'], inplace=True)
 
-#embedding_frame = pd.DataFrame(reduced_embeddings, columns=[f'pca_{i}' for i in range(N_DIMS)])
+    # Subtract off own week age coefficient from log earnings
+    guru['ln_earnings_adjusted'] = guru['ln_earnings'] - age_coefficients[guru['Weeks']]
 
-#for i in range(N_DIMS):
-#    embeddings[f'pca_{i}'] = reduced_embeddings[:, i]
+    # Run regression of log earnings on distances and age
+    formula = REG_FORMULA
+    reg = lm.PanelOLS.from_formula(formula=formula, data=guru, drop_absorbed=True)
 
-# Load box office info
-guru = pd.read_parquet('../guru/data/weekly_sales.parquet')
+    results = reg.fit(low_memory=False)
 
-guru = guru.reset_index(drop=False)
+    residuals = results.resids
+    rmse = np.sqrt(np.mean(residuals ** 2))
 
-print(guru.dtypes)
+    print(f'Lambda: {age_coefficients}')
+    print(f'RMSE: {rmse}')
 
-# Merge on movie genre
-guru = guru.merge(tmdb[['movie_id', 'tmdb_genre']], on='movie_id', how='left')
+    return results
 
-# Create dummy for whether another movie of that genre is showing within each week
-guru['genre_clash'] = guru.groupby(['Date', 'tmdb_genre'])['movie_id'].transform('count') > 1
+def compute_model_error(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances):
+    """Helper function which returns only the model sum of squares"""
 
-# Get summary of genre_clash
-print(guru['genre_clash'].value_counts())
+    # Append 1 to the front as a normalization
+    age_coefficients = np.concatenate((PREFIX, age_coefficients))
 
-# Compute log interest
-guru['ln_earnings'] = np.log(guru['Week Sales'])
+    # Run the regression
+    model = regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances)
 
-# Drop if missing weeks
-guru = guru.dropna(subset=['Weeks'])
+    return model.model_ss
 
-# Histogram of weeks since release
-plt.hist(guru['Weeks'], bins=20)
-plt.xlabel('Weeks Since Wide Release')
-plt.ylabel('Frequency')
-plt.title('Histogram of Weeks Since Wide Release')
-plt.savefig('output/weeks_histogram.png')
 
-# Limit sample to movies with trends and embeddings
-movies_with_trends = guru['movie_id'].unique()
-movies_with_embeddings = tmdb['movie_id'].unique()
-movies = np.intersect1d(movies_with_trends, movies_with_embeddings)
+def main():
+    # Load the embeddings from parquet
+    tmdb = pd.read_parquet('../tmdb/embeddings/movie_descriptions.parquet')
+
+    # Drop if embeddings are null
+    tmdb = tmdb.dropna(subset=['embedding'])
+    tmdb = tmdb.reset_index(drop=True)
+
+    # Filter to primary genre
+    tmdb['tmdb_genre'] = tmdb['tmdb_genres'].apply(lambda x: x[0] if len(x) > 0 else None)
 
-assert len(movies) == distances.shape[0]
+    genre_labels = {
+        28: 'Action',
+        12: 'Adventure',
+        16: 'Animation',
+        35: 'Comedy',
+        80: 'Crime',
+        99: 'Documentary',
+        18: 'Drama',
+        10751: 'Family',
+        14: 'Fantasy',
+        36: 'History',
+        27: 'Horror',
+        10402: 'Music',
+        9648: 'Mystery',
+        10749: 'Romance',
+        878: 'Science Fiction',
+        10770: 'TV Movie',
+        53: 'Thriller',
+        10752: 'War',
+        37: 'Western'
+    }
+
+    # Replace genre with label
+    tmdb['tmdb_genre'] = tmdb['tmdb_genre'].map(genre_labels)
+
+    # Create bar chart of genres
+    genre_counts = tmdb['tmdb_genre'].value_counts()
+    genre_counts.plot(kind='bar')
+    plt.xlabel('Genre')
+    plt.ylabel('Count')
+    plt.title('Count of Movies by Genre')
 
-print(f'Number of movies satisfying all criteria: {len(movies)}')
+    # Label the genres
+    plt.xticks(ticks=range(len(genre_counts)), rotation=45)
+
+    plt.savefig('output/genre_counts.png')
+
+    # Clear plot
+    plt.clf()
 
-guru = guru[guru['movie_id'].isin(movies)]
-embeddings = tmdb[tmdb['movie_id'].isin(movies)]
+    # Get array of movie ids
+    movie_ids = tmdb['movie_id'].copy()
 
-# Get the index of distances at bottom and top ends
-#empirical_distances = np.array(list(movie_distances.values()))
-bottom_end = np.percentile(distances, 10)
-top_end = np.percentile(distances, 90)
+    # Create a map from movie_ids to indices
+    movie_id_to_index = {movie_id: i for i, movie_id in enumerate(movie_ids)}
 
-# Find the closest movies for a subsample of the data
-examples = [
-    "e487ee1bc1477d6c2828d91e94c01c6e_0_1_2_3_4_5_6", # Tangled
-    "72858d1af3c55029d5dc0bf1a77b6d9e_0_1_2_3_4_5_6", # Frozen
-    "cabdb1014252d39ac018f447e7d5fbc2_0_1_2_3_4_5_6", # Dune: Part 1
-    "31a3df9bd28be76c134d369e990d5094_0_1_2_3_4_5_6", # The Notebook
-    "90eb7723a657b6597100aafef171d9f2_2_3_4_5_6", # Avengers: Endgame
-    "635d8ed0689c0a83f596cf04ebe45b97_0_1_2_3_4_5_6", # A Bug's Life
-]
+    raw_embeddings = np.array(tmdb['embedding'].values)
+    raw_embeddings = np.array([np.array(x) for x in raw_embeddings])
+
+    # Create distance matrix by taking dot product of embeddings
+    distances = 1 - raw_embeddings @ raw_embeddings.T
 
-# For each example, find the two closest movies
-for example in examples:
-    # Get index of the example
-    example_index = np.where(movie_ids == example)[0][0]
+    # Normalize distances
+    distances = distances / np.max(distances)
 
-    example_name = tmdb[tmdb['movie_id'] == example]['Clean Title'].values[0]
+    # Load box office info
+    guru = pd.read_parquet('../guru/data/weekly_sales.parquet')
 
-    distances_to_example = distances[example_index, :].copy()
+    guru = guru.reset_index(drop=False)
 
-    print("\n")
+    # Merge on movie genre
+    guru = guru.merge(tmdb[['movie_id', 'tmdb_genre']], on='movie_id', how='left')
 
-    print(f'Closest movies to {example_name}:')
-    print("-------------------------")
-    for i in range(10):
-        closest_index = np.argmin(distances_to_example)
-        closest_movie = movie_ids[closest_index]
-        closest_distance = distances_to_example[closest_index]
+    # Create dummy for whether another movie of that genre is showing within each week
+    # guru['genre_clash'] = guru.groupby(['Date', 'tmdb_genre'])['movie_id'].transform('count') > 1
 
-        closest_movie_name = tmdb['Clean Title'][closest_index]
+    # Compute log interest
+    guru['ln_earnings'] = np.log(guru['Week Sales'])
 
-        print(f'{closest_movie_name}: {closest_distance}')
-        distances_to_example[closest_index] = np.inf
-
-    print("\n")
+    # Drop if missing weeks
+    guru = guru.dropna(subset=['Weeks'])
 
-    distances_to_example = distances[example_index].copy()
-    print("Movies which are close:")
-    distances_from_bottom_decile = np.abs(distances_to_example - bottom_end)
-    for i in range(10):
-        closest_index = np.argmin(distances_from_bottom_decile)
-        closest_movie = movie_ids[closest_index]
-        closest_distance = distances_to_example[closest_index]
-
-        closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
-
-        print(f'{closest_movie_name}: {closest_distance}')
-        distances_from_bottom_decile[closest_index] = np.inf
-
-    print("\n")
-
-    distances_to_example = distances[example_index].copy()
-    print("Movies which are far:")
-    distances_from_top_decile = np.abs(distances_to_example - top_end)
-    for i in range(10):
-        closest_index = np.argmin(distances_from_top_decile)
-        closest_movie = movie_ids[closest_index]
-        closest_distance = distances_to_example[closest_index]
-
-        closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
+    print(guru['Weeks'].describe())
 
-        print(f'{closest_movie_name}: {closest_distance}')
-        distances_from_top_decile[closest_index] = np.inf
+    # Create histogram of weeks since release
+    plt.hist(guru['Weeks'], bins=20)
+    plt.xlabel('Weeks Since Release')
+    plt.ylabel('Count')
+    plt.title('Histogram of Weeks Since Release')
+    plt.savefig('output/weeks_histogram.png')
 
-# For each movie-date, compute the leave-one-out set of distances within the date
-gamma0 = []
-gamma1 = []
-gamma2 = []
-gamma3 = []
+    # We want their weeks to also be zero-indexed so we can use it as an index
+    guru['Weeks'] = guru['Weeks'] - 1
 
-for row in guru.itertuples():
-    movie_id = row.movie_id
-    date = row.Date
+    # Truncate weeks to limit degrees of freedom
+    guru['Weeks'] = np.minimum(guru['Weeks'], WEEK_THRESHOLD)
 
-    # Get index of movie_id in movie_ids
-    movie_index = np.where(movie_ids == movie_id)[0][0]
+    # Convert date to datetime
+    guru['Date'] = pd.to_datetime(guru['Date'])
 
-    # Get all movies on the date
-    date_movies = guru[guru['Date'] == date]
-    
-    competitor_ids = date_movies['movie_id'].unique()
+    # Limit sample to movies with trends and embeddings
+    movies_with_trends = guru['movie_id'].unique()
+    movies_with_embeddings = tmdb['movie_id'].unique()
+    movies = np.intersect1d(movies_with_trends, movies_with_embeddings)
 
-    # Compute the distances
-    competitor_distances = []
-    for comparison_movie in competitor_ids:
-        if movie_id == comparison_movie:
-            continue
+    assert len(movies) == distances.shape[0]
 
-        comparison_index = np.where(movie_ids == comparison_movie)[0][0]
+    print(f'Number of movies satisfying all criteria: {len(movies)}')
 
-        if np.isinf(distances[movie_index, comparison_index]):
-            print(f'Infinite distance between {movie_id} and {comparison_movie}')
+    guru = guru[guru['movie_id'].isin(movies)]
+    embeddings = tmdb[tmdb['movie_id'].isin(movies)]
 
-        # THIS IS WHERE I SHOULD WEIGHT BY AGE I THINK
-        competitor_distances.append(distances[movie_index, comparison_index])
+    # Get the index of distances at bottom and top ends
+    #empirical_distances = np.array(list(movie_distances.values()))
+    bottom_end = np.percentile(distances, 10)
+    top_end = np.percentile(distances, 90)
 
-    competitor_distances = np.array(competitor_distances)
+    # Find the closest movies for a subsample of the data
+    examples = [
+        "e487ee1bc1477d6c2828d91e94c01c6e_0_1_2_3_4_5_6", # Tangled
+        "72858d1af3c55029d5dc0bf1a77b6d9e_0_1_2_3_4_5_6", # Frozen
+        "cabdb1014252d39ac018f447e7d5fbc2_0_1_2_3_4_5_6", # Dune: Part 1
+        "31a3df9bd28be76c134d369e990d5094_0_1_2_3_4_5_6", # The Notebook
+        "90eb7723a657b6597100aafef171d9f2_2_3_4_5_6", # Avengers: Endgame
+        "635d8ed0689c0a83f596cf04ebe45b97_0_1_2_3_4_5_6", # A Bug's Life
+    ]
 
-    # No need to weight by log price since log price is constant
-    gamma0.append(len(competitor_distances))
-    gamma1.append(np.sum(competitor_distances))
-    gamma2.append(np.sum(competitor_distances ** 2))
-    gamma3.append(np.sum(competitor_distances ** 3))
+    # For each example, find the two closest movies
+    for example in examples:
+        # Get index of the example
+        example_index = np.where(movie_ids == example)[0][0]
 
-# Add to the guru data
-guru['gamma0'] = gamma0
-guru['gamma1'] = gamma1
-guru['gamma2'] = gamma2
-guru['gamma3'] = gamma3
+        example_name = tmdb[tmdb['movie_id'] == example]['Clean Title'].values[0]
 
-# Convert movie_id to categorical
-guru['movie_id'] = guru['movie_id'].astype('category')
+        distances_to_example = distances[example_index, :].copy()
 
-guru.set_index(['movie_id', 'Date'], inplace=True)
+        print("\n")
 
-# Run regression of log earnings on distances and age
-formula = 'ln_earnings ~ gamma0 + gamma1 + gamma2 + gamma3 + C(Weeks) + EntityEffects + TimeEffects'
-reg = lm.PanelOLS.from_formula(formula=formula, data=guru, drop_absorbed=True)
+        print(f'Closest movies to {example_name}:')
+        print("-------------------------")
+        for i in range(10):
+            closest_index = np.argmin(distances_to_example)
+            closest_movie = movie_ids[closest_index]
+            closest_distance = distances_to_example[closest_index]
 
-results = reg.fit(low_memory=False)
-print(results)
+            closest_movie_name = tmdb['Clean Title'][closest_index]
+
+            print(f'{closest_movie_name}: {closest_distance}')
+            distances_to_example[closest_index] = np.inf
 
-stargazer = Stargazer([results])
-stargazer.covariate_order(['gamma0', 'gamma1', 'gamma2', 'gamma3'])
-stargazer.add_custom_notes([
-    "Omitting movie age, movie, and date fixed effects for brevity"
-])
-latex = stargazer.render_latex(
-    escape=True,
-    only_tabular=True,
-)
-with open('output/cosine_regression.tex', 'w') as f:
-    f.write(latex)
+        print("\n")
 
-formula_w_genre = 'ln_earnings ~ gamma0 + gamma1 + gamma2 + gamma3 + genre_clash + C(Weeks) + EntityEffects + TimeEffects'
-reg_w_genre = lm.PanelOLS.from_formula(formula=formula_w_genre, data=guru, drop_absorbed=True)
-genre_results = reg_w_genre.fit(low_memory=False)
-print(genre_results)
+        distances_to_example = distances[example_index].copy()
+        print("Movies which are close:")
+        distances_from_bottom_decile = np.abs(distances_to_example - bottom_end)
+        for i in range(10):
+            closest_index = np.argmin(distances_from_bottom_decile)
+            closest_movie = movie_ids[closest_index]
+            closest_distance = distances_to_example[closest_index]
 
-# Get coefficients on gamma1, gamma2, and gamma3
-gamma0_coefficient = results.params['gamma0']
-gamma1_coefficient = results.params['gamma1']
-gamma2_coefficient = results.params['gamma2']
-gamma3_coefficient = results.params['gamma3']
+            closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
 
-gamma0_coefficient_genre = genre_results.params['gamma0']
-gamma1_coefficient_genre = genre_results.params['gamma1']
-gamma2_coefficient_genre = genre_results.params['gamma2']
-gamma3_coefficient_genre = genre_results.params['gamma3']
+            print(f'{closest_movie_name}: {closest_distance}')
+            distances_from_bottom_decile[closest_index] = np.inf
 
-# Plot cross-elasticities over distance
-distance_grid = np.linspace(0, 1, 100)
-cross_elasticity = gamma0_coefficient + gamma1_coefficient * distance_grid + gamma2_coefficient * distance_grid ** 2 + gamma3_coefficient * distance_grid ** 3
+        print("\n")
 
-cross_elasticity_genre = gamma0_coefficient_genre + gamma1_coefficient_genre * distance_grid + gamma2_coefficient_genre * distance_grid ** 2 + gamma3_coefficient_genre * distance_grid ** 3
+        distances_to_example = distances[example_index].copy()
+        print("Movies which are far:")
+        distances_from_top_decile = np.abs(distances_to_example - top_end)
+        for i in range(10):
+            closest_index = np.argmin(distances_from_top_decile)
+            closest_movie = movie_ids[closest_index]
+            closest_distance = distances_to_example[closest_index]
 
-bottom_index = np.argmin(np.abs(distance_grid - bottom_end))
-top_index = np.argmin(np.abs(distance_grid - top_end))
+            closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
 
+            print(f'{closest_movie_name}: {closest_distance}')
+            distances_from_top_decile[closest_index] = np.inf
 
-print(f'Cross-elasticity at bottom end of distance: {cross_elasticity[bottom_index]}')
-print(f'Cross-elasticity at top end of distance: {cross_elasticity[top_index]}')
 
-# Get the vector of distances
-#empirical_distances = np.array(list(movie_distances.values()))
+    # Per Nick: could include lambda in the regression and target that those coefficients are 1
+    # For each date, pre-compute the values for each movie pair
+    dates = guru['Date'].unique()
+    date_movie_dict = {}
+    for date in dates:
+        date_movies = guru[guru['Date'] == date]
+        date_movie_dict[date] = date_movies
 
-# Flatten the distances
-distances = distances.flatten()
 
-# Plot data density and cross-elasticity on same plot
-fig, ax1 = plt.subplots()
 
-# Add title
-ax1.set_title('Cross-Elasticity of Distance')
-ax2 = ax1.twinx()
 
-# Plot the empirical distances
-ax2.hist(distances, bins=20, alpha=0.5, density=True)
-ax2.set_xlabel('Distance')
-ax2.set_ylabel('Density of Empirical Distance')
+    # Profile the objective function
+    #cProfile.run('regress_given_lambda(np.ones(WEEK_THRESHOLD + 1), guru)', 'output/profile.prof')
+    #p = pstats.Stats('output/profile.prof')
+    #p.strip_dirs().sort_stats('cumulative').print_stats(10)
 
-ax1.plot(distance_grid, cross_elasticity, color='orange')
-ax1.set_ylabel('Cross-Elasticity of Distance')
+    # I COULD RANDOMLY HOLD OUT SOME MOVIES AND SEE IF I CAN PREDICT THEM?
+    # WOULD REQUIRE LOSING MOVIE FIXED EFFECTS
+    # SIMILARLY COULD HOLD OUT SOME WEEKENDS
+    # WOULD NOT REQUIRE HOLDOUT IF I STILL COUNT THEM AS "PRESENT" FOR THEIR NEIGHBORS,
+    # BUT DON'T INCLUDE THEM IN THE REGRESSION DIRECTLY. MAY BE WEIRD?
 
-ax2.axvline(x=top_end, color='red', linestyle='--')
-ax2.axvline(x=bottom_end, color='red', linestyle='--')
+    # Optimize the age coefficients
+    print("Minimizing...")
+    #initial_guess = np.ones(WEEK_THRESHOLD + 1)
+    initial_guess = INITIAL_GUESS
 
-fig.tight_layout()
-plt.savefig('output/cross_elasticity.png')
+    #minimization = minimize_parallel(
 
-# Zoom in on the cross-elasticity in the support of the data
+    minimization = minimize(
+        fun = compute_model_error, 
+        x0 = initial_guess,
+        args = (guru, movie_id_to_index, date_movie_dict, distances),
+        # Bound coefficients to be positive
+        # bounds = [(0, None)] * len(initial_guess),
+    )
 
-fig, ax1 = plt.subplots()
+    # Get the optimal age coefficients
+    age_coefficients = minimization.x
+    age_coefficients = np.concatenate((PREFIX, age_coefficients))
 
-# Limit only to bottom 10% to top 10%
-ax1.set_xlim(bottom_end - .2, top_end + .2)
+    optimal_model = regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances)
 
-# Bound the y axis based on range between bottom and top end
-#ymin = np.min(cross_elasticity[bottom_index:top_index])
-#ymax = np.max(cross_elasticity[bottom_index:top_index])
-#margin = (ymax - ymin)
-#ax1.set_ylim(ymin - margin, ymax + margin)
-ax1.set_ylim(0.50, 0.55)
+    print(optimal_model)
 
-# Add title
-ax1.set_title('Cross-Elasticity of Distance')
+    stargazer = Stargazer([optimal_model])
+    stargazer.covariate_order(['gamma1', 'gamma2', 'gamma3'])
+    stargazer.add_custom_notes([
+        "Omitting movie age, movie, and date fixed effects for brevity"
+    ])
+    latex = stargazer.render_latex(
+        escape=True,
+        only_tabular=True,
+    )
+    with open('output/cosine_regression.tex', 'w') as f:
+        f.write(latex)
 
-ax1.plot(distance_grid, cross_elasticity, color='orange')
-ax1.set_ylabel('Cross-Elasticity of Distance')
+    # Get coefficients on gamma1, gamma2, and gamma3
+    gamma1_coefficient = optimal_model.params['gamma1']
+    gamma2_coefficient = optimal_model.params['gamma2']
+    gamma3_coefficient = optimal_model.params['gamma3']
 
-ax2 = ax1.twinx()
+    # Plot cross-elasticities over distance
+    distance_grid = np.linspace(0, 1, 100)
+    cross_elasticity = gamma1_coefficient * distance_grid + gamma2_coefficient * distance_grid ** 2 + gamma3_coefficient * distance_grid ** 3
 
-# Plot the empirical distances
-ax2.hist(distances, bins=20, alpha=0.5, density=True)
-ax2.set_xlabel('Distance')
-ax2.set_ylabel('Density of Empirical Distance')
+    bottom_index = np.argmin(np.abs(distance_grid - bottom_end))
+    top_index = np.argmin(np.abs(distance_grid - top_end))
 
-# Add vertical lines at the top and bottom ends
-ax2.axvline(x=top_end, color='red', linestyle='--')
-ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
-fig.tight_layout()
-plt.savefig('output/cross_elasticity_zoom.png')
+    print(f'Cross-elasticity at bottom end of distance: {cross_elasticity[bottom_index]}')
+    print(f'Cross-elasticity at top end of distance: {cross_elasticity[top_index]}')
 
-fig, ax1 = plt.subplots()
+    # Flatten the distances
+    distances = distances.flatten()
 
-# Limit only to bottom 10% to top 10%
-ax1.set_xlim(bottom_end - .2, top_end + .2)
+    # Plot data density and cross-elasticity on same plot
+    fig, ax1 = plt.subplots()
 
-ax1.set_ylim(0.50, 0.55)
+    # Add title
+    ax1.set_title('Cross-Elasticity of Distance')
+    ax2 = ax1.twinx()
 
-# Add title
-ax1.set_title('Cross-Elasticity of Distance')
+    # Plot the empirical distances
+    ax2.hist(distances, bins=20, alpha=0.5, density=True)
+    ax2.set_xlabel('Distance')
+    ax2.set_ylabel('Density of Empirical Distance')
 
-ax1.plot(distance_grid, cross_elasticity, color='orange')
-ax1.plot(distance_grid, cross_elasticity_genre, color='red')
-ax1.set_ylabel('Cross-Elasticity of Distance')
+    ax1.plot(distance_grid, cross_elasticity, color='orange')
+    ax1.set_ylabel('Cross-Elasticity of Distance')
 
-ax2 = ax1.twinx()
+    ax2.axvline(x=top_end, color='red', linestyle='--')
+    ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
-# Plot the empirical distances
-ax2.hist(distances, bins=20, alpha=0.5, density=True)
-ax2.set_xlabel('Distance')
-ax2.set_ylabel('Density of Empirical Distance')
+    fig.tight_layout()
+    plt.savefig('output/cross_elasticity.png')
 
-# Add vertical lines at the top and bottom ends
-ax2.axvline(x=top_end, color='red', linestyle='--')
-ax2.axvline(x=bottom_end, color='red', linestyle='--')
+    # Zoom in on the cross-elasticity in the support of the data
 
-# Add legend
-ax1.legend(['Original Spec', 'Genre Clash'], loc='upper right')
+    fig, ax1 = plt.subplots()
 
-fig.tight_layout()
-plt.savefig('output/cross_elasticity_genre.png')
+    # Limit only to bottom 10% to top 10%
+    ax1.set_xlim(bottom_end - .2, top_end + .2)
 
+    # Bound the y axis based on range between bottom and top end
+    #ymin = np.min(cross_elasticity[bottom_index:top_index])
+    #ymax = np.max(cross_elasticity[bottom_index:top_index])
+    #margin = (ymax - ymin)
+    #ax1.set_ylim(ymin - margin, ymax + margin)
+  
+    # Get the max observed within the bounds
+    max_observed = np.max(cross_elasticity[bottom_index:top_index])
+    min_observed = np.min(cross_elasticity[bottom_index:top_index])
+    margin = (max_observed - min_observed) / 2
+    ax1.set_ylim(min_observed - margin, max_observed + margin)
+
+    # Add a dotted horizontal line at zero
+    ax1.axhline(y=0, color='grey', linestyle='--')
+
+    # Add title
+    ax1.set_title('Cross-Elasticity of Distance')
+
+    ax1.plot(distance_grid, cross_elasticity, color='orange')
+    ax1.set_ylabel('Cross-Elasticity of Distance')
+
+    ax2 = ax1.twinx()
+
+    # Plot the empirical distances
+    ax2.hist(distances, bins=20, alpha=0.5, density=True)
+    ax2.set_xlabel('Distance')
+    ax2.set_ylabel('Density of Empirical Distance')
+
+    # Add vertical lines at the top and bottom ends
+    ax2.axvline(x=top_end, color='red', linestyle='--')
+    ax2.axvline(x=bottom_end, color='red', linestyle='--')
+
+    fig.tight_layout()
+    plt.savefig('output/cross_elasticity_zoom.png')
+
+if __name__ == '__main__':
+    main()

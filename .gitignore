@@ -14,3 +14,8 @@
 *.bbl
 *.jpg
 *.fls
+*.prof
+*.aux
+*.bcf
+*.blg
+*.fdb_latexmk
