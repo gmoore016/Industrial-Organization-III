@@ -13,7 +13,6 @@ import pstats
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # For weeks greater than this, we truncate to this
-# Note zero-indexing; thus, this is actually the *fifth* week
 WEEK_THRESHOLD = 9
 
 # Initial guess for gamma
@@ -356,7 +355,7 @@ def main():
 
     optimal_model = regress_given_gamma(gamma_star, guru, movie_id_to_index, date_movie_dict, distances)
 
-    print(optimal_model)
+    print(gamma_star)
 
     '''
     stargazer = Stargazer([optimal_model])
@@ -379,10 +378,6 @@ def main():
     bottom_index = np.argmin(np.abs(distance_grid - bottom_end))
     top_index = np.argmin(np.abs(distance_grid - top_end))
 
-
-    print(f'Cross-elasticity at bottom end of distance: {cross_elasticity[bottom_index]}')
-    print(f'Cross-elasticity at top end of distance: {cross_elasticity[top_index]}')
-
     # Flatten the distances
     distances = distances.flatten()
 
@@ -390,7 +385,7 @@ def main():
     fig, ax1 = plt.subplots()
 
     # Add title
-    ax1.set_title('Cross-Elasticity of Distance')
+    ax1.set_title('Impact over Distance')
     ax2 = ax1.twinx()
 
     # Plot the empirical distances
@@ -399,13 +394,13 @@ def main():
     ax2.set_ylabel('Density of Empirical Distance')
 
     ax1.plot(distance_grid, cross_elasticity, color='orange')
-    ax1.set_ylabel('Cross-Elasticity of Distance')
+    ax1.set_ylabel('Competition Function')
 
     ax2.axvline(x=top_end, color='red', linestyle='--')
     ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
     fig.tight_layout()
-    plt.savefig('output/cross_elasticity.png')
+    plt.savefig('output/gamma.png')
 
     # Zoom in on the cross-elasticity in the support of the data
 
@@ -430,10 +425,10 @@ def main():
     ax1.axhline(y=0, color='grey', linestyle='--')
 
     # Add title
-    ax1.set_title('Cross-Elasticity of Distance')
+    ax1.set_title('Impact over Distance')
 
     ax1.plot(distance_grid, cross_elasticity, color='orange')
-    ax1.set_ylabel('Cross-Elasticity of Distance')
+    ax1.set_ylabel('Competition Function')
 
     ax2 = ax1.twinx()
 
@@ -447,7 +442,7 @@ def main():
     ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
     fig.tight_layout()
-    plt.savefig('output/cross_elasticity_zoom.png')
+    plt.savefig('output/gamma_zoomed.png')
 
 
     # Get the alpha coefficients
@@ -461,6 +456,20 @@ def main():
     plt.ylabel('Count')
     plt.title('Distribution of Alpha Coefficients')
     plt.savefig('output/alpha_coefficients.png')
+
+
+    # Get the age coefficients and errors
+    lambda_cols = [colname for colname in optimal_model.params.index if 'lambda' in colname]
+    lambda_values = optimal_model.params[lambda_cols]
+    lambda_errors = optimal_model.std_errors[lambda_cols]
+
+    # Plot the age coefficients and errors
+    plt.clf()
+    plt.errorbar(range(WEEK_THRESHOLD), lambda_values, yerr=lambda_errors, fmt='o')
+    plt.xlabel('Weeks Since Release')
+    plt.ylabel('Fixed Effect')
+    plt.title('Age Fixed Effects')
+    plt.savefig('output/lambda_coefficients.png')
 
 if __name__ == '__main__':
     main()
