@@ -125,7 +125,7 @@ def regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distanc
     regression_df = pd.DataFrame(rows)
 
     # Rename columns
-    regression_df.columns = [f'alpha_{i}' for i in range(len(movie_id_to_index))] + [f'lambda_{i}' for i in range(WEEK_THRESHOLD)] + ['date', 'ln_earnings', 'movie_id']
+    regression_df.columns = [f'alpha_{index}' for index in range(len(movie_id_to_index))] + [f'lambda_{i}' for i in range(WEEK_THRESHOLD)] + ['date', 'ln_earnings', 'movie_id']
 
     # Set the index to the date and movie_id
     regression_df['date'] = pd.to_datetime(regression_df['date'])
@@ -331,7 +331,7 @@ def main():
     # The minimiziation process is expensive; thus, 
     # we get "close" to the optimum with a small sample, then
     # use that as the initial guess for the full sample
-
+    '''
     initial_minimization = minimize(
         fun = compute_model_error, 
         x0 = INITIAL_GUESS,
@@ -340,7 +340,8 @@ def main():
 
     # Get the optimal age coefficients
     gamma_star = initial_minimization.x
-    '''
+
+
 
     final_minimization = minimize(
         fun = compute_model_error,
@@ -350,6 +351,7 @@ def main():
 
     gamma_star = final_minimization.x
     '''
+    gamma_star = [0.332, -1.903, 3.298, -1.796]
 
     print("Initial Minimiziation Complete!")
 
@@ -444,20 +446,6 @@ def main():
     fig.tight_layout()
     plt.savefig('output/gamma_zoomed.png')
 
-
-    # Get the alpha coefficients
-    alpha_cols = [colname for colname in optimal_model.params.index if 'alpha' in colname]
-    alpha_values = optimal_model.params[alpha_cols]
-
-    # Plot a distribution of the alpha coefficients
-    plt.clf()
-    plt.hist(alpha_values, bins=20)
-    plt.xlabel('Alpha Coefficient')
-    plt.ylabel('Count')
-    plt.title('Distribution of Alpha Coefficients')
-    plt.savefig('output/alpha_coefficients.png')
-
-
     # Get the age coefficients and errors
     lambda_cols = [colname for colname in optimal_model.params.index if 'lambda' in colname]
     lambda_values = optimal_model.params[lambda_cols]
@@ -470,6 +458,30 @@ def main():
     plt.ylabel('Fixed Effect')
     plt.title('Age Fixed Effects')
     plt.savefig('output/lambda_coefficients.png')
+
+
+    # Get the alpha coefficients
+    alpha_cols = [colname for colname in optimal_model.params.index if 'alpha' in colname]
+    alpha_values = optimal_model.params[alpha_cols]
+
+    # Plot a distribution of the alpha coefficients
+    plt.clf()
+    plt.hist(alpha_values, bins=20)
+
+    # Add labels
+    plt.xlabel('Alpha Coefficient')
+    plt.ylabel('Count')
+    plt.title('Distribution of Alpha Coefficients')
+
+    # Add a vertical line at the mean
+    plt.axvline(x=alpha_values.mean(), color='red', linestyle='--')
+    # Print the mean
+    plt.text(alpha_values.mean(), 100, f'Mean: {alpha_values.mean():.2f}', rotation=90)
+
+    plt.savefig('output/alpha_coefficients.png')
+
+
+
 
 if __name__ == '__main__':
     main()
