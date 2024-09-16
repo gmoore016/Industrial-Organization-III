@@ -16,6 +16,13 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # Note zero-indexing; thus, this is actually the *fifth* week
 WEEK_THRESHOLD = 4
 
+# Set equal to 1 if normalizing the first coefficient to 1
+PREFIX = []
+INITIAL_GUESS = [1, .8, .6, .4, .2]
+
+# Regression specification
+REG_FORMULA = 'ln_earnings_adjusted ~ 1 + gamma0 + gamma1 + gamma2 + gamma3 + EntityEffects + TimeEffects'
+
 def regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances):
     """Function for nonlinear optimization of age coefficients"""
 
@@ -45,12 +52,12 @@ def regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_d
         competitor_distances = distances[movie_index, competitor_indices]
 
         # No need to weight by log price since log price is constant
-        # If using weighted distances, subtract off one for self
         # Don't want to raise age coefficient to power when computing distances
-        gamma0.append(len(competitor_distances) - 1)
-        gamma1.append(np.sum(competitor_age_coefs * competitor_distances))
-        gamma2.append(np.sum(competitor_age_coefs * (competitor_distances ** 2)))
-        gamma3.append(np.sum(competitor_age_coefs * (competitor_distances ** 3)))
+        # Need to subtract off the own-age coefficient
+        gamma0.append(np.sum((1 / competitor_age_coefs) * np.ones(len(competitor_distances))) - (1 / age_coefficients[row.Weeks]))
+        gamma1.append(np.sum((1 / competitor_age_coefs) * competitor_distances))
+        gamma2.append(np.sum((1 / competitor_age_coefs) * (competitor_distances ** 2)))
+        gamma3.append(np.sum((1 / competitor_age_coefs) * (competitor_distances ** 3)))
 
     # Add to the guru data
     guru['gamma0'] = gamma0
@@ -58,25 +65,37 @@ def regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_d
     guru['gamma2'] = gamma2
     guru['gamma3'] = gamma3
 
+    # Convert date to month and year
+    guru['month'] = guru['Date'].dt.month
+    guru['year'] = guru['Date'].dt.year
+
     # Convert movie_id to categorical
     guru['movie_id'] = guru['movie_id'].astype('category')
 
     guru.set_index(['movie_id', 'Date'], inplace=True)
 
+    # Subtract off own week age coefficient from log earnings
+    guru['ln_earnings_adjusted'] = guru['ln_earnings'] - age_coefficients[guru['Weeks']]
+
     # Run regression of log earnings on distances and age
-    # NOTE: WITHIN A WEEKEND, THERE IS NO VARIATION IN THE # OF MOVIES. THUS, GAMMA0 GETS OMITTED
-    formula = 'ln_earnings ~ gamma1 + gamma2 + gamma3 + C(Weeks) + EntityEffects + TimeEffects'
+    formula = REG_FORMULA
     reg = lm.PanelOLS.from_formula(formula=formula, data=guru, drop_absorbed=True)
 
     results = reg.fit(low_memory=False)
 
+    residuals = results.resids
+    rmse = np.sqrt(np.mean(residuals ** 2))
+
     print(f'Lambda: {age_coefficients}')
-    print(f'RMSE: {results.model_ss}')
+    print(f'RMSE: {rmse}')
 
     return results
 
 def compute_model_error(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances):
     """Helper function which returns only the model sum of squares"""
+
+    # Append 1 to the front as a normalization
+    age_coefficients = np.concatenate((PREFIX, age_coefficients))
 
     # Run the regression
     model = regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances)
@@ -282,20 +301,31 @@ def main():
     #p = pstats.Stats('output/profile.prof')
     #p.strip_dirs().sort_stats('cumulative').print_stats(10)
 
+    # I COULD RANDOMLY HOLD OUT SOME MOVIES AND SEE IF I CAN PREDICT THEM?
+    # WOULD REQUIRE LOSING MOVIE FIXED EFFECTS
+    # SIMILARLY COULD HOLD OUT SOME WEEKENDS
+    # WOULD NOT REQUIRE HOLDOUT IF I STILL COUNT THEM AS "PRESENT" FOR THEIR NEIGHBORS,
+    # BUT DON'T INCLUDE THEM IN THE REGRESSION DIRECTLY. MAY BE WEIRD?
+
     # Optimize the age coefficients
     print("Minimizing...")
     #initial_guess = np.ones(WEEK_THRESHOLD + 1)
-    initial_guess = [4, 3, 2, 1, 0]
+    initial_guess = INITIAL_GUESS
+
     #minimization = minimize_parallel(
-    #minimization = minimize(
-    #    fun = compute_model_error, 
-    #    x0 = initial_guess,
-    #    args = (guru, movie_id_to_index, date_movie_dict, distances),
-    #)
+
+    minimization = minimize(
+        fun = compute_model_error, 
+        x0 = initial_guess,
+        args = (guru, movie_id_to_index, date_movie_dict, distances),
+        # Bound coefficients to be positive
+        # bounds = [(0, None)] * len(initial_guess),
+    )
 
     # Get the optimal age coefficients
-    #age_coefficients = minimization.x
-    age_coefficients = np.array([11.1656, -1.85602, -1.91555, -4.27450, 10.56383])
+    age_coefficients = minimization.x
+    age_coefficients = np.concatenate((PREFIX, age_coefficients))
+
     optimal_model = regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances)
 
     print(optimal_model)
@@ -365,7 +395,14 @@ def main():
     #margin = (ymax - ymin)
     #ax1.set_ylim(ymin - margin, ymax + margin)
   
-    ax1.set_ylim(2.5 * 1e-5, 3 * 1e-5)
+    # Get the max observed within the bounds
+    max_observed = np.max(cross_elasticity[bottom_index:top_index])
+    min_observed = np.min(cross_elasticity[bottom_index:top_index])
+    margin = (max_observed - min_observed) / 2
+    ax1.set_ylim(min_observed - margin, max_observed + margin)
+
+    # Add a dotted horizontal line at zero
+    ax1.axhline(y=0, color='grey', linestyle='--')
 
     # Add title
     ax1.set_title('Cross-Elasticity of Distance')
