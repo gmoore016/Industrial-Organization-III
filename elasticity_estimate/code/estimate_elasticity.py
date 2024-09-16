@@ -20,85 +20,90 @@ WEEK_THRESHOLD = 4
 PREFIX = []
 INITIAL_GUESS = [1, .8, .6, .4, .2]
 
-# Regression specification
-REG_FORMULA = 'ln_earnings_adjusted ~ 1 + gamma0 + gamma1 + gamma2 + gamma3 + EntityEffects + TimeEffects'
-
-def regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances):
+def regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distances):
     """Function for nonlinear optimization of age coefficients"""
 
     guru = guru.copy()
 
-    # For each movie-date, compute the leave-one-out set of distances within the date
-    gamma0 = []
-    gamma1 = []
-    gamma2 = []
-    gamma3 = []
+    # Define cubic dependant on gamma
+    cubic = lambda x: gamma[0] + gamma[1] * x + gamma[2] * x ** 2 + gamma[3] * x ** 3
+
+    rows = []
+
+    print("Constructing Data...")
 
     for row in guru.itertuples():
-
-        # Can I avoid redundant computation within a date?
+        # Get the movie's date and id
         movie_id = row.movie_id
         date = row.Date
+        age = row.Weeks
+        ln_earnings = row.ln_earnings
 
         # Get index of movie_id in movie_ids
         movie_index = movie_id_to_index[movie_id]
 
+        # Create a lambda vector with length equal to the number of weeks
+        lambda_vals = np.zeros(WEEK_THRESHOLD)
+        lambda_vals[age] = 1
+
+        # Create an alpha vector with length equal to the number of movies
+        alpha_vals = np.zeros(len(movie_id_to_index))
+        alpha_vals[movie_index] = 1
+
         # Get all movies on the date
         date_movies = date_movie_dict[date]
 
-        # Can ignore that self is included since distance(x, x) = 0
-        competitor_age_coefs = age_coefficients[date_movies['Weeks']]
-        competitor_indices = np.array([movie_id_to_index[movie_id] for movie_id in date_movies['movie_id']])
-        competitor_distances = distances[movie_index, competitor_indices]
+        for competitor in date_movies.itertuples():
+            competitor_id = competitor.movie_id
+            competitor_age = competitor.Weeks
+            competitor_index = movie_id_to_index[competitor_id]
 
-        # No need to weight by log price since log price is constant
-        # Don't want to raise age coefficient to power when computing distances
-        # Need to subtract off the own-age coefficient
-        gamma0.append(np.sum((1 / competitor_age_coefs) * np.ones(len(competitor_distances))) - (1 / age_coefficients[row.Weeks]))
-        gamma1.append(np.sum((1 / competitor_age_coefs) * competitor_distances))
-        gamma2.append(np.sum((1 / competitor_age_coefs) * (competitor_distances ** 2)))
-        gamma3.append(np.sum((1 / competitor_age_coefs) * (competitor_distances ** 3)))
+            if competitor_index != movie_index:
+                # Compute the polynomial of the two movies' distances
+                f_of_distance = cubic(distances[movie_index, competitor_index])
 
-    # Add to the guru data
-    guru['gamma0'] = gamma0
-    guru['gamma1'] = gamma1
-    guru['gamma2'] = gamma2
-    guru['gamma3'] = gamma3
+                # Add the alpha values
+                alpha_vals[competitor_index] += f_of_distance
 
-    # Convert date to month and year
-    guru['month'] = guru['Date'].dt.month
-    guru['year'] = guru['Date'].dt.year
+                # Add the lambda values
+                lambda_vals[competitor_age] += f_of_distance
 
-    # Convert movie_id to categorical
-    guru['movie_id'] = guru['movie_id'].astype('category')
+        row = np.concatenate((alpha_vals, lambda_vals, [date, ln_earnings, movie_id]))
+        rows.append(row)
 
-    guru.set_index(['movie_id', 'Date'], inplace=True)
 
-    # Subtract off own week age coefficient from log earnings
-    guru['ln_earnings_adjusted'] = guru['ln_earnings'] - age_coefficients[guru['Weeks']]
+    # Create a dataframe of the alpha and lambda values along with the date
+    regression_df = pd.DataFrame(rows)
 
-    # Run regression of log earnings on distances and age
-    formula = REG_FORMULA
-    reg = lm.PanelOLS.from_formula(formula=formula, data=guru, drop_absorbed=True)
+    # Rename columns
+    regression_df.columns = [f'alpha_{i}' for i in range(len(movie_id_to_index))] + [f'lambda_{i}' for i in range(WEEK_THRESHOLD)] + ['date', 'ln_earnings', 'movie_id']
+
+    # Set the index to the date and movie_id
+    regression_df['date'] = pd.to_datetime(regression_df['date'])
+    regression_df = regression_df.set_index(['movie_id', 'date'])
+
+    # Define the regression formula
+    reg_formula = 'ln_earnings ~ 1 + ' + ' + '.join([f'lambda_{i}' for i in range(WEEK_THRESHOLD)]) + ' + ' + ' + '.join([f'alpha_{i}' for i in range(len(movie_id_to_index))]) + ' + TimeEffects'
+
+    print("Regressing...")
+
+    reg = lm.PanelOLS.from_formula(formula=reg_formula, data=regression_df, drop_absorbed=True)
 
     results = reg.fit(low_memory=False)
 
     residuals = results.resids
     rmse = np.sqrt(np.mean(residuals ** 2))
 
-    print(f'Lambda: {age_coefficients}')
+    print(f'Gamma: {gamma}')
     print(f'RMSE: {rmse}')
 
     return results
 
-def compute_model_error(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances):
+def compute_model_error(gamma, guru, movie_id_to_index, date_movie_dict, distances):
     """Helper function which returns only the model sum of squares"""
 
-    # Append 1 to the front as a normalization
-    age_coefficients = np.concatenate((PREFIX, age_coefficients))
-
     # Run the regression
-    model = regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances)
+    model = regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distances)
 
     return model.model_ss
 
@@ -199,7 +204,7 @@ def main():
     guru['Weeks'] = guru['Weeks'] - 1
 
     # Truncate weeks to limit degrees of freedom
-    guru['Weeks'] = np.minimum(guru['Weeks'], WEEK_THRESHOLD)
+    guru['Weeks'] = np.minimum(guru['Weeks'], WEEK_THRESHOLD - 1)
 
     # Convert date to datetime
     guru['Date'] = pd.to_datetime(guru['Date'])
@@ -307,6 +312,11 @@ def main():
     # WOULD NOT REQUIRE HOLDOUT IF I STILL COUNT THEM AS "PRESENT" FOR THEIR NEIGHBORS,
     # BUT DON'T INCLUDE THEM IN THE REGRESSION DIRECTLY. MAY BE WEIRD?
 
+    compute_model_error(INITIAL_GUESS, guru, movie_id_to_index, date_movie_dict, distances)
+
+    kill
+
+
     # Optimize the age coefficients
     print("Minimizing...")
     #initial_guess = np.ones(WEEK_THRESHOLD + 1)
@@ -326,7 +336,7 @@ def main():
     age_coefficients = minimization.x
     age_coefficients = np.concatenate((PREFIX, age_coefficients))
 
-    optimal_model = regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances)
+    optimal_model = regress_given_gamma(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances)
 
     print(optimal_model)
 
