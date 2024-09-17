@@ -312,7 +312,7 @@ We know the average movie's $\alpha_i$ is roughly 0.5. Similarly, the $\lambda_{
 
 Suppose movie $i$ is attempting to estimate the impact of competitor $j$'s premier, anticipating $j$ is an average movie. If $j$ is in the 90th percentile of similarity to $i$, then $i$'s log quantity would be reduced by $f(d_{ij}) \cdot \delta_{jt} = -0.01 \cdot (0.5 + 2.5) = -0.03$, or roughly 3\%. On the other hand, if $j$ is in the 10th percentile of similarity, $i$'s log quantity would instead by \emph{increased} by $f(d_{ij}) \cdot \delta_{jt} = 0.001 \cdot (0.5 + 2.5) = 0.003$, or roughly 0.3\%. Thus, the presence of the wrong competitor relative to the right one could reasonably lower films' box office revenues by 3.3\%.
 
-To put this magnitude in context, \textcite{follows2016SF} estimates that box office revenue makes up 42\% of a movie's revenue. Further, he argues that the average film earns a profit of roughly 3.7\%. If a film experiences a 3.3\% decline in 42\% of its revenue, its total revenue falls by 1.3\%. This implies the profit margin in the presence of the additional competitor is only 1.95\%, a 47.3\% reduction in profitability.\footnote{$\frac{R - C}{C} = 0.033 \implies R = 1.033C \implies 0.987 R = 1.0195 C \implies \frac{0.987R - C}{C} = 0.0195 \implies \frac{0.037 - 0.0195}{0.037} = 47.3\%$} 
+To put this magnitude in context, \textcite{follows2016SF} estimates that box office revenue makes up 42\% of a movie's revenue. Further (acknowledging the difficulties of managing so-called ``Hollywood accounting''), he argues that the average film earns a profit of roughly 3.7\%. If a film experiences a 3.3\% decline in 42\% of its revenue, its total revenue falls by 1.3\%. This implies the profit margin in the presence of the additional competitor is only 1.95\%, a 47.3\% reduction in profitability.\footnote{$\frac{R - C}{C} = 0.033 \implies R = 1.033C \implies 0.987 R = 1.0195 C \implies \frac{0.987R - C}{C} = 0.0195 \implies \frac{0.037 - 0.0195}{0.037} = 47.3\%$} 
 
 To be even more concrete, let us consider specific movies. Ignoring the $\alpha$ coefficients for each of the following movies, suppose Disney were releasing \emph{Frozen} opposite gory historical action flick \emph{Medieval}: a movie in the bottom decile of cosine similarity to \emph{Frozen}. If Disney were instead facing children's fantasy romp \emph{Inkheart}--a movie in the top decile of similarity to \emph{Frozen}--they would expect a reduction in revenue similar to the one computed above as \emph{Inkheart} pulls away customers \emph{Medieval} would not. 
 
@@ -328,7 +328,7 @@ A skeptic might argue the patterns I see are merely coincidental: why would we b
 
 \subsection{UV Decomposition}
 
-I implement UV-decomposition for matrix completion as described in \textcite{leskovec2020MMD}.\footnote{The algorithm described in the textbook optimizes element-wise, which is quite slow. Based on my own vector calculus visible in appendix \ref{app:uv}, I've implemented \emph{matrix-wide} optimization, which seems to work. However, I have not found a reference for this approach anywhere; I emailed Professor Leskovec to confirm the result is the same, but have not heard back.} Suppose I have an $n \times m$ matrix of movie reviews, with $n$ users and $m$ reviews. However, the matrix is generally sparse; most users have not reviewed most movies. UV-decomposition decomposes this matrix into two thin matrices $U$ and $V$ such that $UV^T$ approximates the original matrix. This is a cousin of singular value decomposition, however relaxes the orthogonality constraint common in those approaches. By minimizing the sum of squared errors among projections in the \emph{observed} entries of the matrix, we hope to project the \emph{unobserved} entries of the matrix as well. 
+I implement UV-decomposition for matrix completion as described in \textcite{leskovec2020MMD}.\footnote{The algorithm described in the textbook optimizes element-wise, which is quite slow. Based on my own vector calculus visible in appendix \ref{app:uv}, I've implemented \emph{matrix-wide} optimization, which seems to work. However, I have not found a reference for this approach anywhere; I emailed Professor Leskovec to confirm the result is the same, but have not heard back.} Suppose I have an $n \times m$ matrix of movie reviews, with $n$ users and $m$ reviews. However, the matrix is generally sparse; most users have not reviewed most movies. UV-decomposition decomposes this matrix into two thin matrices $U$ and $V$ such that $UV'$ approximates the original matrix. This is a cousin of singular value decomposition, however relaxes the orthogonality constraint common in those approaches. By minimizing the sum of squared errors among projections in the \emph{observed} entries of the matrix, we hope to project the \emph{unobserved} entries of the matrix as well. 
 
 Note that UV decomposition relies on a contraction mapping: for a fixed $V$ matrix, we choose the $U$ matrix which minimizes the sum of squared errors. We then fix that $U$ matrix and choose an optimal $V$ matrix, iterating this process until convergence. This procedure is guaranteed to converge, though it may converge to a local minimum. Thus, we generally initialize the $U$ and $V$ matrices with random values, then run the algorithm multiple times to ensure we find something approximating the global minimum. 
 
@@ -418,7 +418,27 @@ On a broader timeline, I also want to think about some way to address marketing.
 \section{Matrix-Wise Identification of UV Decomposition}
 \label{app:uv}
 
-Consider the following optimization problem:
+Let $M$ be an $m \times n$ matrix where most observations are missing. We wish to identify matrices $U$ and $V$, of dimension $m \times d$ and $n \times d$ respectively, such that $UV'$ approximates the observed entries of $M$, minimizing mean squared error. 
+
+I've found it's easiest to start in the \emph{vector} case, then stack to get to the matrix case. Let us start by adjusting one $1 \times d$ row $u$ of $U$ at a time to minimize mean squared error. Let $m$ represent the corresponding row of $M$ impacted by changes in $u$. We wish to solve the following optimization problem:
+$$\min_{u} \{ (m - uV')(m - uV')' \} = \min_{u} \{mm' - mV'u' - uVm' + uVV'u' \} $$
+
+The dimensions of this objective imply the result is a scalar; thus, we can take the gradient with respect to $u$ and set it equal to zero to find the optimal $u$. The gradient is:
+$$\nabla_u = \vec{0} = -2mV' + 2uVV'$$
+
+Solving for the optimal $u^*$, this yields the following first-order condition:
+$$u^* = mV'(VV')^{-1}$$
+
+Entirely analogously, we can optimize a row of $V$ with respect to the existing $U$ to find:
+$$v^* = (U'U)^{-1}U'm$$
+
+From here, it is not hard to stack the vectors to get the matrix-wide optimization:
+
+$$U^* = MV'(VV')^{-1} \qquad V^* = (U'U)^{-1}U'M$$
+
+By generating random starting $U$ and $V$, we can iterate this process until convergence to find (locally) optimal $U$ and $V$ matrices.
+
+These matrix forms are particularly appealing since they highlight the procedure's implicit relation to linear regression. Philosophically, we are searching for $d$ latent characteristics of each movie (corresponding to rows of $V$) and the analogous coefficients on these characteristics which define each user's taste (corresponding to rows of $U$) such that the coefficient-characteristic pair justify the existing reviews. From there, we can extrapolate to missing movies by simply multiplying the latent characteristics by the coefficients for each missing user. Note since the problem is symmetric we could just as easily say the latent values for users are the ``characteristics'' and the values for movies are ``coefficients,'' but I prefer to think of movies as more easily defined by a finite set of characteristics than users.
 
 \end{appendices}
 
