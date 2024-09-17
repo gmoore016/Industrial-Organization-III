@@ -264,7 +264,7 @@ def main():
     guru['Date'] = pd.to_datetime(guru['Date'])
 
     # Keep only movies in 2019 or earlier
-    guru = guru[guru['Date'].dt.year <= 2019]
+    guru = guru[(2000 <= guru['Date'].dt.year) & (guru['Date'].dt.year <= 2019)]
 
     # Limit sample to movies with trends and embeddings
     movies_with_trends = guru['movie_id'].unique()
@@ -298,7 +298,6 @@ def main():
     #    get_neighbors(example, distances, tmdb, movie_ids)
 
 
-    # Per Nick: could include lambda in the regression and target that those coefficients are 1
     # For each date, pre-compute the values for each movie pair
     dates = guru['Date'].unique()
     date_movie_dict = {}
@@ -306,6 +305,7 @@ def main():
         date_movies = guru[guru['Date'] == date]
         date_movie_dict[date] = date_movies
 
+    print(f"Number of dates: {len(dates)}")
 
     # Profile the objective function
     #cProfile.run('compute_model_error(INITIAL_GUESS, guru, movie_id_to_index, date_movie_dict, distances)', 'output/profile.prof')
