@@ -242,6 +242,12 @@ def main():
     # Compute log interest
     guru['ln_earnings'] = np.log(guru['Week Sales'])
 
+    # Convert date to datetime
+    guru['Date'] = pd.to_datetime(guru['Date'])
+
+    # Keep only movies in 2019 or earlier
+    guru = guru[(2000 <= guru['Date'].dt.year) & (guru['Date'].dt.year <= 2019)]
+
     # Drop if missing weeks
     guru = guru.dropna(subset=['Weeks'])
 
@@ -254,17 +260,20 @@ def main():
     plt.title('Histogram of Weeks Since Release')
     plt.savefig('output/weeks_histogram.png')
 
+    # Get the movie with the longest run
+    longest_run = guru[guru['Weeks'] == guru['Weeks'].max()]
+    print(longest_run)
+    kill
+
+
+
     # We want their weeks to also be zero-indexed so we can use it as an index
     guru['Weeks'] = guru['Weeks'] - 1
 
     # Truncate weeks to limit degrees of freedom
     guru['Weeks'] = np.minimum(guru['Weeks'], WEEK_THRESHOLD - 1)
 
-    # Convert date to datetime
-    guru['Date'] = pd.to_datetime(guru['Date'])
 
-    # Keep only movies in 2019 or earlier
-    guru = guru[(2000 <= guru['Date'].dt.year) & (guru['Date'].dt.year <= 2019)]
 
     # Limit sample to movies with trends and embeddings
     movies_with_trends = guru['movie_id'].unique()
