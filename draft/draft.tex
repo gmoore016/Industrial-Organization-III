@@ -393,23 +393,13 @@ This plot shows that the coefficient on text similarity for predicting TSPR is c
 Moreover, while the number of pairs included remains large enough to have useful confidence intervals, the coefficient is increasing in the threshold value. If we think TSPR increases in quality with data, this suggests that as TSPR becomes higher quality, it looks increasingly like our text-based cosine similarity measure. This exercise highlights an additional strength of my cosine similarity measure; while collaborative filtering needs tens of thousands of reviews per movie to generate useful predictions, the embeddings-based method can generate useful predictions with only a few sentences of text.
 
 
-
-
-
-
-
 \section{Conclusion}
 
-Based on my findings this quarter, I am increasingly confident there is ``something'' here: using boilerplate embeddings of unstructured text characteristics, I pick up significant substitution patterns in the movie industry. If my work is successful, I would be the first to estimate cross-movie elasticities, while also providing a new method for estimating demand in industries with unstructured product characteristic text.
+In summary, I have developed a new method for estimating competition in characteristic space. By developing a new model of competition in the film industry, I can harness boilerplate OpenAI embeddings to estimate impact of competition on a movie's box office revenue. 
 
-Over the summer, I hope to develop my paper in a few specific ways:
-\begin{itemize}
-    \item Enrich the model by interacting competitor age with cross-elasticity as discussed in section 4.2
-    \item Shore up arguments about substitution by comparing text-based similarity to review-based similarity as discussed in section 8
-    \item Confirm in the data that a movie's characteristics appear to be uncorrelated with the characteristics of its competitors as discussed in section 3.1
-\end{itemize}
+I find that movies with similar descriptions are indeed substitutes; moreover, substitutability falls as distance in characteristic space increases. My magnitudes are large but reasonable; changing one competitor movie from the bottom percentile of similarity to the top percentile can reduce profitability by 47\%. 
 
-On a broader timeline, I also want to think about some way to address marketing. While the characteristics of the movies themselves may be set in advance, the characteristics \emph{emphasized in marketing} may be different. For example, if two romantic comedies come out in one weekend, both may benefit if one emphasizes the romantic half of the movie while the other emphasizes the comedic half. I am still thinking about clever ways to address this. TMDB contains some movie trailers, so one approach would be to see if similar \emph{movies} also have similar \emph{trailers}, even if they're released at roughly the same time. 
+Two frontier collaborative filtering algorithms, UV decomposition and topic-specific PageRank, confirm the validity of my text similarity measure. I find that the patterns I see in the text-based model are not coincidental, but reflect consumers' true revealed preferences.
 
 \printbibliography
 
