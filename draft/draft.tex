@@ -84,7 +84,7 @@ Twin movies are a persistent feature of the film industry: the Wikipedia page fo
 
 Given filmmakers' expressed distaste for twin movies, why do they continue to exist? It suggests that studios are unable to change their movies' characteristics in response to their competitors' characteristics; at the point Universal learns of \emph{A Bug's Life}, it is too late for them to adjust \emph{Antz} to be more distinct. Thus, our demand estimation coefficients are identified--they do not capture the strategic interplay of positioning and substitutability, but instead the direct impact of competition on film sales.
 
-Given the above,our demand model assumes characteristics are exogeneous. If instead they were chosen as equilibrium objects, then the coefficients on proximity are no longer causal: the impact of locating near a close competitor becomes confounded with latent demand characteristics driving the \emph{choice} to locate near a close competitor. However, the existance of twin movies suggests this is not a major concern.
+Given the above, our demand model assumes characteristics are exogeneous. If instead they were chosen as equilibrium objects, then the coefficients on proximity are no longer causal: the impact of locating near a close competitor becomes confounded with latent demand characteristics driving the \emph{choice} to locate near a close competitor. However, the existance of twin movies suggests this is not a major concern.
 
 
 
@@ -109,7 +109,7 @@ Second, we can \emph{use revenue as a proxy for quantity.} As described in \text
 
 Movie consumers face a discrete choice problem: which of the movies on offer this weekend should they see? Let a movie $i$'s attractiveness at time $t$ be given by some $\delta_{it}$. Consumers receive idiosyncratic demand shocks for each movie, and choose the movie which maximizes their utility. Due to the uniform pricing scheme discussed above, price \emph{does not} enter into the consumer's decision; choices are driven entirely by movie quality and idiosyncratic taste.
 
-Aggregating over all consumers, we can express the demand for movie $i$ in week $t$ as a function $\phi$ of the movie's appeal $\delta_{it}$ and the appeal of its competitors $\delta_{-it}$. Again due to the uniform pricing scheme, we can use revenues as a proxy for quantity, since quantity is simply a constant scalar transformation of revenue. Finally, demand for movies varies idiosyncratically by weekend; for example, there is much more demand for movies on Christmas Day than on a random weekend in sunny July. Thus, I include a fixed effect $\alpha_t$ to capture week-by-week variation. Thus, I can write the demand for movie $i$ in week $t$ as:
+Aggregating over all consumers, we can express the demand for movie $i$ in week $t$ as a function $\phi$ of the movie's appeal $\delta_{it}$ and the appeal of its competitors $\delta_{-it}$. Again due to the uniform pricing scheme, we can use revenues as a proxy for quantity, since quantity is simply a constant scalar transformation of revenue. Finally, demand for movies varies idiosyncratically by weekend; for example, there is much more demand for movies on Christmas Day than on a random weekend in sunny July. Thus, I include a fixed effect $\alpha_t$ to capture week-by-week variation. I can therefore write the demand for movie $i$ in week $t$ as:
 
 $$\ln(q_{it}) = \phi(\delta_{it}, \delta_{-it}) + \alpha_t$$
 
@@ -224,7 +224,7 @@ Secondly, BERT embeddings tend to function at the sentence level (and word2vec e
 
 \subsection{Quality Check: Genre}
 
-As a check for the quality of the embeddings, I perform t-Stochastic Neighbor Embedding (t-SNE) on the embeddings to reduce them to two dimensions and highlight clustering. For each movie, I identify the first genre listed on the TMDB page.Embeddings do cluster by genre, as visible in figure \ref{fig:tsne}. Generally, we see action and adventure movies grouped in the top-right quadrant, science fiction and fantasy in the bottom-right quadrant, and romance and comedies on the left; that is, it seems as through the embeddings are not just clustering \emph{within} a genre, but also grouping \emph{similar genres}. 
+As a check for the quality of the embeddings, I perform t-Stochastic Neighbor Embedding (t-SNE) on the embeddings to reduce them to two dimensions and highlight clustering. For each movie, I identify the first genre listed on the TMDB page. Embeddings do cluster by genre, as visible in figure \ref{fig:tsne}. Generally, we see action and adventure movies grouped in the top-right quadrant, science fiction and fantasy in the bottom-right quadrant, and romance and comedies on the left; that is, it seems as through the embeddings are not just clustering \emph{within} a genre, but also grouping \emph{similar genres}. 
 
 \begin{figure}
     \includegraphics[width=\textwidth]{../tmdb/plots/tsne_genres.png}
@@ -253,7 +253,7 @@ As a check for the quality of the embeddings, I perform t-Stochastic Neighbor Em
     \end{center}
 \end{table}
 
-Nearest neighbors to some common movies are visible in table \ref{tab:cosine}. Just by inspection, it is clear this similarity score is capturing \emph{something}: the closest movies to \emph{The Notebook} are other Nicholas Sparks book adaptations, and the closest movies to \emph{A Bug's Life} are \emph{The Ant Bully} and \emph{Antz}. Moreover, the closest neighbors to \emph{Frozen} and \emph{Avengers: Endgame} are in the same franchise: \emph{Frozen II} and \emph{Avengers: Infinity War} respectively. Thus, I feel comfortable using these embeddings to capture similarity between movies.
+Nearest neighbors to some popular movies are visible in table \ref{tab:cosine}. Just by inspection, it is clear this similarity score is capturing \emph{something}: the closest movies to \emph{The Notebook} are other Nicholas Sparks book adaptations, and the closest movies to \emph{A Bug's Life} are \emph{The Ant Bully} and \emph{Antz}. Moreover, the closest neighbors to \emph{Frozen} and \emph{Avengers: Endgame} are in the same franchise: \emph{Frozen II} and \emph{Avengers: Infinity War} respectively. Thus, I feel comfortable using these embeddings to capture similarity between movies.
 
 \section{Results}
 
@@ -327,7 +327,7 @@ A skeptic might argue the patterns I see are merely coincidental: why would we b
 
 ``Recommendation engines'' are a common tool in the tech world used to predict what products a user will like. We can think of this project as harnessing a new type of recommendation engine, identifying movies which are likely to be substitutable based on their descriptions. Algorithms in this space are broadly divided into two categories: collaborative filtering and content-based filtering. The text embeddings used above are a form of content-based filtering: using the ``content'' of the movie (its text description) to predict its appeal. However, one way to benchmark the quality of this approach is to compare against a \emph{collaborative} filtering algorithm. Unlike content-based filtering, collaborative filtering doesn't include any information about the content of a movie; instead, it uses the preferences of other users to predict what a user will like. For example, if I like \emph{The Dark Knight}, and most people who like \emph{The Dark Knight} also like \emph{Inception}, a collaborative filtering algorithm would predict I would like \emph{Inception}. 
 
-\textcite{harper2016ATIIS} provide a public-use dataset of real movie reviews (``MovieLens''); it contains more than 25 million 1-to-5 star reviews of movies by users. Moreover, movies are tagged with their TMDB ID; that is, the same ID I use to collect movie descriptions. Thus, for any given pair of movies, I can compute similarity under both the text-based and collaborative filtering methods. If the two measures are correlated, I can be more confident that the patterns I see in the text-based model are not coincidental. I validate my text-based model by comparing it against two frontier collaborative filtering algorithms: topic-specific PageRank and UV decomposition.
+\textcite{harper2016ATIIS} provide a public-use dataset of real movie reviews (``MovieLens''); it contains more than 25 million 1-to-5 star reviews of movies by users. Moreover, movies are tagged with their TMDB ID; that is, the same ID I use to collect movie descriptions. Thus, for any given pair of movies, I can compute similarity under both the text-based and collaborative filtering methods. If the two measures are correlated, I can be more confident that the patterns I see in the text-based model are not coincidental. I validate my text-based model by comparing it against two frontier collaborative filtering algorithms: UV decomposition and topic-specific PageRank.
 
 \pagebreak
 
@@ -405,6 +405,9 @@ In summary, I have developed a new method for estimating competition in characte
 Two frontier collaborative filtering algorithms, UV decomposition and topic-specific PageRank, confirm the validity of my text similarity measure. I find that the patterns I see in the text-based model are not coincidental, but reflect consumers' true revealed preferences.
 
 Movies with similar descriptions are indeed substitutes; moreover, substitutability falls as distance in characteristic space increases. My magnitudes are large but reasonable; changing one competitor movie from the bottom decile of similarity to the top decile can reduce revenue by 3.3\%, decreasing total profitability by 47\%. 
+
+% \section*{Acknowledgments}
+% Thank you to Liran Einav and Shoshana Vasserman for their support both in and after IO III. Thanks also to Arun Chandrasekhar, Nick Bloom, Janet Stefanov, Nick Scott-Hearn, and Lauren Harris for their feedback on this project, as well as the rest of the 2024 IO III class.
 
 \printbibliography
 
