@@ -224,7 +224,7 @@ Secondly, BERT embeddings tend to function at the sentence level (and word2vec e
 
 \subsection{Quality Check: Genre}
 
-As a check for the quality of the embeddings, I perform t-Stochastic Neighbor Embedding (t-SNE) on the embeddings to reduce them to two dimensions and highlight clustering. For each movie, I identify the first genre listed on the TMDB page. Embeddings do cluster by genre, as visible in figure \ref{fig:tsne}. Generally, we see action and adventure movies grouped in the top-right quadrant, science fiction and fantasy in the bottom-right quadrant, and romance and comedies on the left; that is, it seems as through the embeddings are not just clustering \emph{within} a genre, but also grouping \emph{similar genres}. 
+As a check for the quality of the embeddings, I perform t-Stochastic Neighbor Embedding (t-SNE) on the embeddings to reduce them to two dimensions and emphasize clustering. For each movie, I identify the first genre listed on the TMDB page. When running t-SNE I limit to only the four most popular genres (action, drama, comedy, and horror) to keep the figure legible. Embeddings do cluster by genre, as visible in figure \ref{fig:tsne}. Generally we see comedies visible on the left, while actions are on the right and horrors are at the top (admittedly, the nebulous ``drama'' genre is more diffuse).
 
 \begin{figure}
     \includegraphics[width=\textwidth]{../tmdb/plots/tsne_genres.png}

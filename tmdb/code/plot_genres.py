@@ -8,12 +8,16 @@ import re
 
 GENRE_REGEX = re.compile(r"\[(\d+)")
 
-# Load in the embeddings
-with open('embeddings/movie_descriptions.pkl', 'rb') as f:
-    movie_data = pickle.load(f)
+GENRE_LIST = ['Action', 'Comedy', 'Drama', 'Horror']
 
-movie_data['genre'] = movie_data['tmdb_genres'].apply(lambda x: re.search(GENRE_REGEX, x).group(1) if re.search(GENRE_REGEX, x) else None)
-movie_data['genre'] = movie_data['genre'].astype(pd.Int64Dtype())
+# Load in the embeddings from parquet
+movie_data = pd.read_parquet('embeddings/movie_descriptions.parquet')
+
+# movie_data['genre'] = movie_data['tmdb_genres'].apply(lambda x: re.search(GENRE_REGEX, x).group(1) if re.search(GENRE_REGEX, x) else None)
+
+# Drop observations with no genres
+movie_data = movie_data[movie_data['tmdb_genres'].apply(lambda x: x.size > 0)]
+movie_data['genre'] = movie_data['tmdb_genres'].apply(lambda x: x[0])
 
 # Label genre integers
 genre_labels = {
@@ -40,7 +44,18 @@ genre_labels = {
 
 movie_data['genre'] = movie_data['genre'].map(genre_labels)
 
-X = movie_data['embedding'].apply(lambda x: x.data[0].embedding).to_list()
+# Count movies by genre
+genre_counts = movie_data['genre'].value_counts()
+print(genre_counts)
+
+# Keep only the genres we want to plot
+movie_data = movie_data[movie_data['genre'].isin(GENRE_LIST)]
+
+# Filter out movies with no embeddings
+movie_data = movie_data.dropna(subset=['embedding'])
+
+
+X = movie_data['embedding'].tolist()
 X = np.array(X)
 
 # Create t-SNE model
