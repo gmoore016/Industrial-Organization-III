@@ -112,6 +112,7 @@ def regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distanc
         competitor_ages = date_movies['Weeks'].values
         competitor_indices = np.array([movie_id_to_index[competitor_id] for competitor_id in competitor_ids])
 
+        # CAN I PRE-COMPUTE THIS ONCE AT THE START OF THE FUNCTION, RATHER THAN RE-DOING IT FOR EACH ROW?
         fs_of_distances = cubic(distances[movie_index, competitor_indices])
         
         alpha_vals[competitor_indices] += fs_of_distances
