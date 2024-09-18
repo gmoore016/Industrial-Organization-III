@@ -13,94 +13,157 @@ import pstats
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # For weeks greater than this, we truncate to this
-# Note zero-indexing; thus, this is actually the *fifth* week
-WEEK_THRESHOLD = 4
+WEEK_THRESHOLD = 9
 
-# Set equal to 1 if normalizing the first coefficient to 1
-PREFIX = []
-INITIAL_GUESS = [1, .8, .6, .4, .2]
+# Initial guess for gamma
+INITIAL_GUESS = np.array([1, .1, .01, .001])
 
-# Regression specification
-REG_FORMULA = 'ln_earnings_adjusted ~ 1 + gamma0 + gamma1 + gamma2 + gamma3 + EntityEffects + TimeEffects'
 
-def regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances):
+def get_neighbors(example, distances, tmdb, movie_ids):
+    '''
+    Function to get characteristic examples for a given movie
+    '''
+    # Get index of the example
+    example_index = np.where(movie_ids == example)[0][0]
+
+    example_name = tmdb[tmdb['movie_id'] == example]['Clean Title'].values[0]
+
+    distances_to_example = distances[example_index, :].copy()
+
+    print("\n")
+
+    print(f'Closest movies to {example_name}:')
+    print("-------------------------")
+    for i in range(10):
+        closest_index = np.argmin(distances_to_example)
+        closest_movie = movie_ids[closest_index]
+        closest_distance = distances_to_example[closest_index]
+
+        closest_movie_name = tmdb['Clean Title'][closest_index]
+
+        print(f'{closest_movie_name}: {closest_distance}')
+        distances_to_example[closest_index] = np.inf
+    
+    print("\n")
+
+    distances_to_example = distances[example_index].copy()
+    print("Movies which are close:")
+    distances_from_bottom_decile = np.abs(distances_to_example - bottom_end)
+    for i in range(10):
+        closest_index = np.argmin(distances_from_bottom_decile)
+        closest_movie = movie_ids[closest_index]
+        closest_distance = distances_to_example[closest_index]
+
+        closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
+
+        print(f'{closest_movie_name}: {closest_distance}')
+        distances_from_bottom_decile[closest_index] = np.inf
+
+    print("\n")
+
+    distances_to_example = distances[example_index].copy()
+    print("Movies which are far:")
+    distances_from_top_decile = np.abs(distances_to_example - top_end)
+    for i in range(10):
+        closest_index = np.argmin(distances_from_top_decile)
+        closest_movie = movie_ids[closest_index]
+        closest_distance = distances_to_example[closest_index]
+
+        closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
+
+        print(f'{closest_movie_name}: {closest_distance}')
+        distances_from_top_decile[closest_index] = np.inf
+
+def regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distances):
     """Function for nonlinear optimization of age coefficients"""
 
     guru = guru.copy()
 
-    # For each movie-date, compute the leave-one-out set of distances within the date
-    gamma0 = []
-    gamma1 = []
-    gamma2 = []
-    gamma3 = []
+    # Define cubic dependant on gamma
+    cubic = lambda x: gamma[0] + gamma[1] * x + gamma[2] * x ** 2 + gamma[3] * x ** 3
+
+    rows = []
+
+    print("Constructing Data...")
 
     for row in guru.itertuples():
-
-        # Can I avoid redundant computation within a date?
+        # Get the movie's date and id
         movie_id = row.movie_id
         date = row.Date
+        age = row.Weeks
+        ln_earnings = row.ln_earnings
 
         # Get index of movie_id in movie_ids
         movie_index = movie_id_to_index[movie_id]
 
-        # Get all movies on the date
+        # Create a lambda vector with length equal to the number of weeks
+        lambda_vals = np.zeros(WEEK_THRESHOLD)
+        lambda_vals[age] = 1
+
+        # Create an alpha vector with length equal to the number of movies
+        alpha_vals = np.zeros(len(movie_id_to_index))
+        alpha_vals[movie_index] = 1
+
+        # Get all movies on the date not equal to the original movie
         date_movies = date_movie_dict[date]
+        date_movies = date_movies[date_movies['movie_id'] != movie_id]
 
-        # Can ignore that self is included since distance(x, x) = 0
-        competitor_age_coefs = age_coefficients[date_movies['Weeks']]
-        competitor_indices = np.array([movie_id_to_index[movie_id] for movie_id in date_movies['movie_id']])
-        competitor_distances = distances[movie_index, competitor_indices]
+        competitor_ids = date_movies['movie_id'].values
+        competitor_ages = date_movies['Weeks'].values
+        competitor_indices = np.array([movie_id_to_index[competitor_id] for competitor_id in competitor_ids])
 
-        # No need to weight by log price since log price is constant
-        # Don't want to raise age coefficient to power when computing distances
-        # Need to subtract off the own-age coefficient
-        gamma0.append(np.sum((1 / competitor_age_coefs) * np.ones(len(competitor_distances))) - (1 / age_coefficients[row.Weeks]))
-        gamma1.append(np.sum((1 / competitor_age_coefs) * competitor_distances))
-        gamma2.append(np.sum((1 / competitor_age_coefs) * (competitor_distances ** 2)))
-        gamma3.append(np.sum((1 / competitor_age_coefs) * (competitor_distances ** 3)))
+        # CAN I PRE-COMPUTE THIS ONCE AT THE START OF THE FUNCTION, RATHER THAN RE-DOING IT FOR EACH ROW?
+        fs_of_distances = cubic(distances[movie_index, competitor_indices])
+        
+        alpha_vals[competitor_indices] += fs_of_distances
+        lambda_vals[competitor_ages] += fs_of_distances
 
-    # Add to the guru data
-    guru['gamma0'] = gamma0
-    guru['gamma1'] = gamma1
-    guru['gamma2'] = gamma2
-    guru['gamma3'] = gamma3
+        row = np.concatenate((alpha_vals, lambda_vals, [date, ln_earnings, movie_id]))
+        rows.append(row)
 
-    # Convert date to month and year
-    guru['month'] = guru['Date'].dt.month
-    guru['year'] = guru['Date'].dt.year
 
-    # Convert movie_id to categorical
-    guru['movie_id'] = guru['movie_id'].astype('category')
+    # Create a dataframe of the alpha and lambda values along with the date
+    regression_df = pd.DataFrame(rows)
 
-    guru.set_index(['movie_id', 'Date'], inplace=True)
+    # Rename columns
+    regression_df.columns = [f'alpha_{index}' for index in range(len(movie_id_to_index))] + [f'lambda_{i}' for i in range(WEEK_THRESHOLD)] + ['date', 'ln_earnings', 'movie_id']
 
-    # Subtract off own week age coefficient from log earnings
-    guru['ln_earnings_adjusted'] = guru['ln_earnings'] - age_coefficients[guru['Weeks']]
+    # Set the index to the date and movie_id
+    regression_df['date'] = pd.to_datetime(regression_df['date'])
+    regression_df = regression_df.set_index(['movie_id', 'date'])
 
-    # Run regression of log earnings on distances and age
-    formula = REG_FORMULA
-    reg = lm.PanelOLS.from_formula(formula=formula, data=guru, drop_absorbed=True)
+    # Drop any columns with all zeros
+    # Should only be relevant in heuristic subsample
+    regression_df = regression_df.loc[:, (regression_df != 0).any(axis=0)]
+
+    # Get all remaining alpha and lambda col names
+    alpha_cols = [colname for colname in regression_df.columns if 'alpha' in colname]
+    lambda_cols = [colname for colname in regression_df.columns if 'lambda' in colname]
+
+    # Define the regression formula
+    reg_formula = 'ln_earnings ~ ' + ' + '.join(alpha_cols) + ' + ' + ' + '.join(lambda_cols) + ' + TimeEffects'
+
+    print("Regressing...")
+
+    reg = lm.PanelOLS.from_formula(formula=reg_formula, data=regression_df, drop_absorbed=True)
 
     results = reg.fit(low_memory=False)
 
-    residuals = results.resids
-    rmse = np.sqrt(np.mean(residuals ** 2))
-
-    print(f'Lambda: {age_coefficients}')
-    print(f'RMSE: {rmse}')
-
     return results
 
-def compute_model_error(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances):
+def compute_model_error(gamma, guru, movie_id_to_index, date_movie_dict, distances):
     """Helper function which returns only the model sum of squares"""
 
-    # Append 1 to the front as a normalization
-    age_coefficients = np.concatenate((PREFIX, age_coefficients))
-
     # Run the regression
-    model = regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances)
+    model = regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distances)
 
-    return model.model_ss
+    residuals = model.resids
+    rmse = np.sqrt(np.mean(residuals ** 2))
+
+    print(f'Gamma: {gamma}')
+    print(f'RMSE: {rmse}')
+
+    return rmse
 
 
 def main():
@@ -177,11 +240,14 @@ def main():
     # Merge on movie genre
     guru = guru.merge(tmdb[['movie_id', 'tmdb_genre']], on='movie_id', how='left')
 
-    # Create dummy for whether another movie of that genre is showing within each week
-    # guru['genre_clash'] = guru.groupby(['Date', 'tmdb_genre'])['movie_id'].transform('count') > 1
-
     # Compute log interest
     guru['ln_earnings'] = np.log(guru['Week Sales'])
+
+    # Convert date to datetime
+    guru['Date'] = pd.to_datetime(guru['Date'])
+
+    # Keep only movies in 2019 or earlier
+    guru = guru[(2000 <= guru['Date'].dt.year) & (guru['Date'].dt.year <= 2019)]
 
     # Drop if missing weeks
     guru = guru.dropna(subset=['Weeks'])
@@ -195,26 +261,32 @@ def main():
     plt.title('Histogram of Weeks Since Release')
     plt.savefig('output/weeks_histogram.png')
 
+    # Get the movie with the longest run
+    longest_run = guru[guru['Weeks'] == guru['Weeks'].max()]
+    print(longest_run)
+    kill
+
+
+
     # We want their weeks to also be zero-indexed so we can use it as an index
     guru['Weeks'] = guru['Weeks'] - 1
 
     # Truncate weeks to limit degrees of freedom
-    guru['Weeks'] = np.minimum(guru['Weeks'], WEEK_THRESHOLD)
+    guru['Weeks'] = np.minimum(guru['Weeks'], WEEK_THRESHOLD - 1)
 
-    # Convert date to datetime
-    guru['Date'] = pd.to_datetime(guru['Date'])
+
 
     # Limit sample to movies with trends and embeddings
     movies_with_trends = guru['movie_id'].unique()
     movies_with_embeddings = tmdb['movie_id'].unique()
     movies = np.intersect1d(movies_with_trends, movies_with_embeddings)
 
-    assert len(movies) == distances.shape[0]
+    # No longer true since we're adding a heuristic subsample
+    #assert len(movies) == distances.shape[0]
 
     print(f'Number of movies satisfying all criteria: {len(movies)}')
 
     guru = guru[guru['movie_id'].isin(movies)]
-    embeddings = tmdb[tmdb['movie_id'].isin(movies)]
 
     # Get the index of distances at bottom and top ends
     #empirical_distances = np.array(list(movie_distances.values()))
@@ -232,60 +304,10 @@ def main():
     ]
 
     # For each example, find the two closest movies
-    for example in examples:
-        # Get index of the example
-        example_index = np.where(movie_ids == example)[0][0]
-
-        example_name = tmdb[tmdb['movie_id'] == example]['Clean Title'].values[0]
-
-        distances_to_example = distances[example_index, :].copy()
-
-        print("\n")
-
-        print(f'Closest movies to {example_name}:')
-        print("-------------------------")
-        for i in range(10):
-            closest_index = np.argmin(distances_to_example)
-            closest_movie = movie_ids[closest_index]
-            closest_distance = distances_to_example[closest_index]
-
-            closest_movie_name = tmdb['Clean Title'][closest_index]
-
-            print(f'{closest_movie_name}: {closest_distance}')
-            distances_to_example[closest_index] = np.inf
-
-        print("\n")
-
-        distances_to_example = distances[example_index].copy()
-        print("Movies which are close:")
-        distances_from_bottom_decile = np.abs(distances_to_example - bottom_end)
-        for i in range(10):
-            closest_index = np.argmin(distances_from_bottom_decile)
-            closest_movie = movie_ids[closest_index]
-            closest_distance = distances_to_example[closest_index]
-
-            closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
-
-            print(f'{closest_movie_name}: {closest_distance}')
-            distances_from_bottom_decile[closest_index] = np.inf
-
-        print("\n")
-
-        distances_to_example = distances[example_index].copy()
-        print("Movies which are far:")
-        distances_from_top_decile = np.abs(distances_to_example - top_end)
-        for i in range(10):
-            closest_index = np.argmin(distances_from_top_decile)
-            closest_movie = movie_ids[closest_index]
-            closest_distance = distances_to_example[closest_index]
-
-            closest_movie_name = tmdb[tmdb['movie_id'] == closest_movie]['Clean Title'].values[0]
-
-            print(f'{closest_movie_name}: {closest_distance}')
-            distances_from_top_decile[closest_index] = np.inf
+    #for example in examples:
+    #    get_neighbors(example, distances, tmdb, movie_ids)
 
 
-    # Per Nick: could include lambda in the regression and target that those coefficients are 1
     # For each date, pre-compute the values for each movie pair
     dates = guru['Date'].unique()
     date_movie_dict = {}
@@ -293,11 +315,10 @@ def main():
         date_movies = guru[guru['Date'] == date]
         date_movie_dict[date] = date_movies
 
-
-
+    print(f"Number of dates: {len(dates)}")
 
     # Profile the objective function
-    #cProfile.run('regress_given_lambda(np.ones(WEEK_THRESHOLD + 1), guru)', 'output/profile.prof')
+    #cProfile.run('compute_model_error(INITIAL_GUESS, guru, movie_id_to_index, date_movie_dict, distances)', 'output/profile.prof')
     #p = pstats.Stats('output/profile.prof')
     #p.strip_dirs().sort_stats('cumulative').print_stats(10)
 
@@ -307,31 +328,50 @@ def main():
     # WOULD NOT REQUIRE HOLDOUT IF I STILL COUNT THEM AS "PRESENT" FOR THEIR NEIGHBORS,
     # BUT DON'T INCLUDE THEM IN THE REGRESSION DIRECTLY. MAY BE WEIRD?
 
+    #compute_model_error(INITIAL_GUESS, guru, movie_id_to_index, date_movie_dict, distances)
+
+
+
     # Optimize the age coefficients
     print("Minimizing...")
-    #initial_guess = np.ones(WEEK_THRESHOLD + 1)
-    initial_guess = INITIAL_GUESS
 
-    #minimization = minimize_parallel(
+    # For initial search, limit only to one year
+    sample_guru = guru[guru['Date'].dt.year == 2000]
 
-    minimization = minimize(
+    # The minimiziation process is expensive; thus, 
+    # we get "close" to the optimum with a small sample, then
+    # use that as the initial guess for the full sample
+    '''
+    initial_minimization = minimize(
         fun = compute_model_error, 
-        x0 = initial_guess,
-        args = (guru, movie_id_to_index, date_movie_dict, distances),
-        # Bound coefficients to be positive
-        # bounds = [(0, None)] * len(initial_guess),
+        x0 = INITIAL_GUESS,
+        args = (sample_guru, movie_id_to_index, date_movie_dict, distances),
     )
 
     # Get the optimal age coefficients
-    age_coefficients = minimization.x
-    age_coefficients = np.concatenate((PREFIX, age_coefficients))
+    gamma_star = initial_minimization.x
 
-    optimal_model = regress_given_lambda(age_coefficients, guru, movie_id_to_index, date_movie_dict, distances)
 
-    print(optimal_model)
 
+    final_minimization = minimize(
+        fun = compute_model_error,
+        x0 = gamma_star,
+        args = (guru, movie_id_to_index, date_movie_dict, distances),
+    )
+
+    gamma_star = final_minimization.x
+    '''
+    gamma_star = [0.332, -1.903, 3.298, -1.796]
+
+    print("Initial Minimiziation Complete!")
+
+    optimal_model = regress_given_gamma(gamma_star, guru, movie_id_to_index, date_movie_dict, distances)
+
+    print(gamma_star)
+
+    '''
     stargazer = Stargazer([optimal_model])
-    stargazer.covariate_order(['gamma1', 'gamma2', 'gamma3'])
+    stargazer.covariate_order(['lambda_0', 'lambda_1', 'lambda_2', 'lambda_3'])
     stargazer.add_custom_notes([
         "Omitting movie age, movie, and date fixed effects for brevity"
     ])
@@ -341,22 +381,14 @@ def main():
     )
     with open('output/cosine_regression.tex', 'w') as f:
         f.write(latex)
-
-    # Get coefficients on gamma1, gamma2, and gamma3
-    gamma1_coefficient = optimal_model.params['gamma1']
-    gamma2_coefficient = optimal_model.params['gamma2']
-    gamma3_coefficient = optimal_model.params['gamma3']
+    '''
 
     # Plot cross-elasticities over distance
     distance_grid = np.linspace(0, 1, 100)
-    cross_elasticity = gamma1_coefficient * distance_grid + gamma2_coefficient * distance_grid ** 2 + gamma3_coefficient * distance_grid ** 3
+    cross_elasticity = gamma_star[0] + gamma_star[1] * distance_grid + gamma_star[2] * distance_grid ** 2 + gamma_star[3] * distance_grid ** 3
 
     bottom_index = np.argmin(np.abs(distance_grid - bottom_end))
     top_index = np.argmin(np.abs(distance_grid - top_end))
-
-
-    print(f'Cross-elasticity at bottom end of distance: {cross_elasticity[bottom_index]}')
-    print(f'Cross-elasticity at top end of distance: {cross_elasticity[top_index]}')
 
     # Flatten the distances
     distances = distances.flatten()
@@ -365,7 +397,7 @@ def main():
     fig, ax1 = plt.subplots()
 
     # Add title
-    ax1.set_title('Cross-Elasticity of Distance')
+    ax1.set_title('Impact over Distance')
     ax2 = ax1.twinx()
 
     # Plot the empirical distances
@@ -374,13 +406,13 @@ def main():
     ax2.set_ylabel('Density of Empirical Distance')
 
     ax1.plot(distance_grid, cross_elasticity, color='orange')
-    ax1.set_ylabel('Cross-Elasticity of Distance')
+    ax1.set_ylabel('Competition Function')
 
     ax2.axvline(x=top_end, color='red', linestyle='--')
     ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
     fig.tight_layout()
-    plt.savefig('output/cross_elasticity.png')
+    plt.savefig('output/gamma.png')
 
     # Zoom in on the cross-elasticity in the support of the data
 
@@ -405,10 +437,10 @@ def main():
     ax1.axhline(y=0, color='grey', linestyle='--')
 
     # Add title
-    ax1.set_title('Cross-Elasticity of Distance')
+    ax1.set_title('Impact over Distance')
 
     ax1.plot(distance_grid, cross_elasticity, color='orange')
-    ax1.set_ylabel('Cross-Elasticity of Distance')
+    ax1.set_ylabel('Competition Function')
 
     ax2 = ax1.twinx()
 
@@ -422,7 +454,44 @@ def main():
     ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
     fig.tight_layout()
-    plt.savefig('output/cross_elasticity_zoom.png')
+    plt.savefig('output/gamma_zoomed.png')
+
+    # Get the age coefficients and errors
+    lambda_cols = [colname for colname in optimal_model.params.index if 'lambda' in colname]
+    lambda_values = optimal_model.params[lambda_cols]
+    lambda_errors = optimal_model.std_errors[lambda_cols]
+
+    # Plot the age coefficients and errors
+    plt.clf()
+    plt.errorbar(range(WEEK_THRESHOLD), lambda_values, yerr=lambda_errors, fmt='o')
+    plt.xlabel('Weeks Since Release')
+    plt.ylabel('Fixed Effect')
+    plt.title('Age Fixed Effects')
+    plt.savefig('output/lambda_coefficients.png')
+
+
+    # Get the alpha coefficients
+    alpha_cols = [colname for colname in optimal_model.params.index if 'alpha' in colname]
+    alpha_values = optimal_model.params[alpha_cols]
+
+    # Plot a distribution of the alpha coefficients
+    plt.clf()
+    plt.hist(alpha_values, bins=20)
+
+    # Add labels
+    plt.xlabel('Alpha Coefficient')
+    plt.ylabel('Count')
+    plt.title('Distribution of Alpha Coefficients')
+
+    # Add a vertical line at the mean
+    plt.axvline(x=alpha_values.mean(), color='red', linestyle='--')
+    # Print the mean
+    plt.text(alpha_values.mean(), 100, f'Mean: {alpha_values.mean():.2f}', rotation=90)
+
+    plt.savefig('output/alpha_coefficients.png')
+
+
+
 
 if __name__ == '__main__':
     main()
