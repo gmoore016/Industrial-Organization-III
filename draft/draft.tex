@@ -27,15 +27,15 @@
 
 \section{Introduction}
 
-Demand estimation is a central pillar of the economist toolkit, informing antitrust regulation, optimal taxation, and trade policy. However, these methods are often limited to markets in which goods have quantifiable characteristics such as storage in the market for hard drives or wattage in the market for light bulbs. Markets with difficult-to-quantify characteristics should not receive less attention simply because they are difficult to quantify; though it is hard to put a number how funny a movie is, we understand that a firm monopolizing ``funny'' films is likely to be bad for consumers. Thus, it is important economists develop tools to estimate demand in markets for goods with difficult-to-quantify characteristics.
+Demand estimation is a central pillar of the economist toolkit, informing antitrust regulation, optimal taxation, and trade policy. However, these methods are often limited to markets in which goods have quantifiable characteristics such as storage in the market for hard drives or wattage in the market for light bulbs. Markets with difficult-to-quantify characteristics should not receive less attention simply because they are difficult to quantify; though it is hard to put a number how funny a movie is, we understand that a studio monopolizing ``funny'' films is likely to be bad for consumers. Thus, it is important economists develop tools to estimate demand in markets for goods with difficult-to-quantify characteristics.
 
 Product-level demand systems such as the Almost Ideal Demand System \parencite{deaton1980AER} can estimate rich substitution patterns without any characteristic data by looking only at substitution patterns under variation; that is, the substitution patterns of good $i$ are uninformative about the patterns of good $j$, even if $i$ and $j$ are actually very similar. These methods often require onerous quantities of data on consumer behavior. For example, estimation of AIDS requires sufficient variation to estimate parameters quadratic in the number of goods. A corollary of this is that these methods require goods to have \emph{already entered the market}. If a firm wishes to estimate substitution for a new product, these methods will have little to offer them.
 
 I propose a new method for quantifying product characteristics using text descriptions. By embedding text descriptions of a product in characteristic space, we as econometricians can identify which products are most similar. Thus, we can predict which products compete most closely with others and estimate how the presence of one product impacts the sales of another. Unlike product-based demand estimation methods, this method can inform research on products which have not yet entered the market, and can fit rich substitution patterns while tuning relatively few parameters.
 
-While this method has broad applicability, I use the film industry as a case study. Movies are a natural laboratory for several reasons. First, movies have a broad consumer base, such that readers have an intuitive sense whether my method ``makes sense''--even if you haven't seen \emph{Spider-Man}, you likely have a sense whether it is more similar to \emph{Man of Steel} or \emph{The Notebook}, and can use this lens to judge my results. Second, movie characteristics are often difficult to fit into a traditional econometric framework: while we can easily measure the wattage of a lightbulb, it is much harder to put a number on how funny or violent a movie is--and harder still given the lack of clean data. Finally, the movie industry has specific market characteristics which make demand estimation straightforward conditional on my method. Uniform pricing shuts down the endogeneous pricing channel of competition, and long production pipelines force studios to choose characteristics without perfect knowledge of their competitors.
+While this method has broad applicability, I use the film industry as a case study. Movies are a natural laboratory for several reasons. First, movies have a broad consumer base, such that readers have an intuitive sense whether my method ``makes sense''--even if you someone hasn't seen \emph{Spider-Man}, they likely have a sense whether it is more similar to \emph{Man of Steel} or \emph{The Notebook}, and can use this lens to judge my results. Second, movie characteristics are often difficult to fit into a traditional econometric framework: while we can easily measure the wattage of a lightbulb, it is much harder to put a number on how funny or violent a movie is--and harder still given the lack of clean data. Finally, the movie industry has specific market characteristics which make demand estimation straightforward conditional on my method. Uniform pricing shuts down the endogeneous pricing channel of competition, and long production pipelines force studios to choose characteristics without perfect knowledge of their competitors.
 
-Using data from BoxOfficeGuru and TheMovieDB, I estimate the impact of competitor characteristics on film revenue for each weekend from 2000-2019. I find substitution patterns which are plausible in both magnitude and direction, and which are robust to the choice of distance metric. As a movie becomes more similar to its competitor, it becomes more and more detrimental to the competitor's revenue. 
+Using data from BoxOfficeGuru and TheMovieDB, I estimate the impact of competitor characteristics on film revenue for each weekend from 2000-2019. I find substitution patterns which are plausible in both magnitude and direction, and which are robust to the choice of distance metric. As a movie becomes more similar to its competitor, it becomes more and more detrimental to the competitor's revenue. Replacing a competitor in the 10th percentile of similarity with one in the 90th percentile reduces box-office revenue by 3.3\%. Given films' thin profit margins, this is roughly a 47\% decline in profit.
 
 \section{Literature}
 
@@ -43,7 +43,7 @@ This paper contributes to three strands of literature. First, I implement a nove
 
 \subsection{Text as Data}
 
-This paper's primary contribution is to the literature on text as data, well summarized in \textcite{gentzkow2019EL}. The statistical analysis of text has a long history; the earliest example I have found is \textcite{mendenhall1887S} using word frequency to predict the author of a mysterious text. This is an early example of \emph{bag of words} methods, which treat text as a collection of words rather than a structured object. Other types of bag of words methods include term frequency-inverse document frequency (TF-IDF), which downweights words that appear in many documents, and Latent Dirichlet Allocation (LDA), which uses a generative model to infer topics from word concurrences.
+This paper's primary contribution is to the literature on text as data, which is well summarized in \textcite{gentzkow2019EL}. The statistical analysis of text has a long history; to my knowledge, the earlist example is \textcite{mendenhall1887S} using word frequency to predict the author of a mysterious text. This is an early example of \emph{bag of words} methods, which treat text as a collection of words rather than a structured object. Other types of bag of words methods include term frequency-inverse document frequency (TF-IDF), which downweights words that appear in many documents, and Latent Dirichlet Allocation (LDA), which uses a generative model to infer topics from word concurrences.
 
 As argued in \textcite{kenter2015P2AICIKM}, bag-of-words and string comparison models struggle when working with short texts. If one paragraph includes the word ``wizardry'' while the other includes the word ``sorcery,'' a bag of words model will not capture the similarity between the two paragraphs. In large enough documents, it is more likely the two words will appear in similar contexts, but this is difficult to rely on when the sample text is only one or two sentences. 
 
@@ -61,7 +61,7 @@ Though this paper does not focus on \emph{physical space}, I also contribute to 
 
 My closest predecessor studying competition in embedding space is \textcite{magnolfi2022}, who use t-Stochastic Triplet Embeddings to estimate competition in the cereal industry. I take heavy inspiration from their model, however substitute frontier text embedding methods from OpenAI for their triplet-based embeddings. Both they and I follow \textcite{pinkse2002E}, who first estimate product cross-elasticities as a function of distance in characteristic space.
 
-\subsection{Movies}
+\subsection{Economics of Film}
 
 The final strand of literature where I wish to highlight my contribution is on the economics of the film industry. 
 
@@ -74,17 +74,17 @@ To the best of my knowledge, this paper is the first to examine the \emph{interp
 
 \section{The Movie Industry}
 
-I use an industry case study of the film industry to highlight the value of my method. Text is distinctively important for the movie industry because movie characteristics are otherwise difficult to quantify; for example, both \emph{Batman Begins} and \emph{Ant-Man} are big-budget superhero action movies, but even a quick glance at the movie descriptions makes clear they are not substitutable.\footnote{\emph{Batman Begins}: ``Driven by tragedy, billionaire Bruce Wayne dedicates his life to uncovering and defeating the corruption that plagues his home, Gotham City. Unable to work within the system, he instead creates a new identity, a symbol of fear for the criminal underworld.'' \emph{Ant-Man}: ``Armed with the astonishing ability to shrink in scale but increase in strength, master thief Scott Lang must embrace his inner-hero and help his mentor, Doctor Hank Pym, protect the secret behind his spectacular Ant-Man suit from a new generation of towering threats''} This is particularly important given movies are an ``experience good''--people rely on the description to inform their purchasing decision, as most people will not form opinions through repeat purchases. Recognizing this, we expect firms put more effort into the text descriptions of their movies than comparable firms might in more traditional goods markets, as these decisions are distinctively important to customer decisionmaking. Finally, the market for movies has two distinctive features which make it a strong candidate for demand estimation: long production pipelines and a tradition of uniform pricing.
+I use a case study of the film industry to highlight the value of my method. Text is distinctively important for the movie industry because movie characteristics are otherwise difficult to quantify; for example, both \emph{Batman Begins} and \emph{Ant-Man} are big-budget action movies about animal-based superheros, but even a quick glance at the movie descriptions makes clear they are not close substitutes.\footnote{\emph{Batman Begins}: ``Driven by tragedy, billionaire Bruce Wayne dedicates his life to uncovering and defeating the corruption that plagues his home, Gotham City. Unable to work within the system, he instead creates a new identity, a symbol of fear for the criminal underworld.'' \emph{Ant-Man}: ``Armed with the astonishing ability to shrink in scale but increase in strength, master thief Scott Lang must embrace his inner-hero and help his mentor, Doctor Hank Pym, protect the secret behind his spectacular Ant-Man suit from a new generation of towering threats''} This is particularly important given movies are an ``experience good''--people rely on the description to inform their purchasing decision, as most people will not form opinions through repeat purchases. Recognizing this, we expect firms put more effort into the text descriptions of their movies than comparable firms might in more traditional goods markets, as these decisions are distinctively important to customer decisionmaking. Finally, the market for movies has two distinctive features which make it a strong candidate for demand estimation: long production pipelines and a tradition of uniform pricing.
 
 \subsection{Production Timelines}
 
 Movie production timelines are both long and secretive. Since studios must purchase a script, hire a cast, and shoot all \emph{before} promoting a movie, it is difficult for a film to change its characteristics in response to its competitors' characteristics. To provide suggestive evidence of this inelasticity, I highlight the existance of ``twin movies:'' pairs of movies released in close proximity with very similar characteristics. The most famous examples, \emph{A Bug's Life} and \emph{Antz}, both released in fall of 1998 and feature early CGI animation of ants rebelling against oppression.
 
-Twin movies are a persistent feature of the film industry: the Wikipedia page for the phenomenon lists nearly 300 pairs of twin movies. Studios are generally inclined to avoid releasing a twin movie due to fear of excess competition. In 2016, French director Xavier Giannoli released his film \emph{Marguerite}, inspired by the true story of a New York Socialite turned failed opera singer, in the same year as 20th Century Fox's \emph{Florence Foster Jenkins} retelling the same story. Giannoli told the \emph{Independent}: ``For me, it was terrible...I work a lot as a writer to find completely original stories. I don't want the audience to have the feeling, `oh, I saw that!''' \parencite{mottram2016I}.
+Twin movies are a persistent feature of the film industry: the Wikipedia page for the phenomenon lists nearly 300 pairs of twin movies. Studios are generally inclined to avoid releasing a twin movie due to fear of excess competition. In 2016, French director Xavier Giannoli released his film \emph{Marguerite}, inspired by the true story of a New York socialite turned failed opera singer, in the same year as 20th Century Fox's \emph{Florence Foster Jenkins} retelling the same story. Giannoli told the \emph{Independent}: ``For me, it was terrible...I work a lot as a writer to find completely original stories. I don't want the audience to have the feeling, `oh, I saw that!'" \parencite{mottram2016I}.
 
-Given filmmakers' expressed distaste for twin movies, why do they continue to exist? It suggests that studios are unable to change their movies' characteristics in response to their competitors' characteristics; at the point Universal learns of \emph{A Bug's Life}, it is too late for them to adjust \emph{Antz} to be more distinct. Thus, our demand estimation coefficients are identified--they do not capture the strategic interplay of positioning and substitutability, but instead the direct impact of competition on film sales.
+Given filmmakers' expressed distaste for twin movies, why do they continue to exist? Studios are seemingly unable to change their movies' characteristics in response to their competitors' characteristics; at the point DreamWorks learns of \emph{A Bug's Life}, it is too late for them to adjust \emph{Antz} to be more distinct. Thus, the demand estimation coefficients are identified--they do not capture the strategic interplay of positioning and substitutability, but instead the direct impact of competition on film sales.
 
-Given the above, our demand model assumes characteristics are exogeneous. If instead they were chosen as equilibrium objects, then the coefficients on proximity are no longer causal: the impact of locating near a close competitor becomes confounded with latent demand characteristics driving the \emph{choice} to locate near a close competitor. However, the existance of twin movies suggests this is not a major concern.
+Given the above, my demand model assumes characteristics are exogeneous. If instead they were chosen as equilibrium objects, then the coefficients on proximity are no longer causal: the impact of locating near a close competitor becomes confounded with latent demand characteristics driving the \emph{choice} to locate near a close competitor. However, the existance of twin movies suggests this is not a major concern.
 
 
 
@@ -98,26 +98,26 @@ An ongoing puzzle within the film industry is the existence of a uniform pricing
 
 There are many explanations for this phenomenon; I am agnostic about which of these is the true explanation. What is important is that ticket price \emph{is} uniform across films. This pricing anomaly supports two simplifying assumptions which do not hold water in most other settings.
 
-First, we know \emph{movies do not compete on price.} Under more flexible pricing, we might believe two movies in close priximity would lower prices to compete for the same audience, raising the quantity sold overall. However, since prices are fixed we assume that consumer decisions are driven entirely by product characteristics and idiosyncratic taste.
+First, I argue \emph{movies do not compete on price.} Under more flexible pricing, it is possible two movies in close priximity would lower prices to compete for the same audience, raising the quantity sold overall. However, since prices are fixed I assume that consumer decisions are driven entirely by product characteristics and idiosyncratic taste.
 
-Second, we can \emph{use revenue as a proxy for quantity.} As described in \textcite{bond2021JME}, this assumption is often perilous since a variable markup means that revenue may not reflect true production. However, since prices are fixed, we can understand revenue as simply the quantity of tickets sold multiplied by some scalar price. 
+Second, I \emph{use revenue as a proxy for quantity.} As described in \textcite{bond2021JME}, this assumption is often perilous since a variable markup means that revenue may not reflect true production. However, since prices are fixed, I can interpret revenue as simply the quantity of tickets sold multiplied by some scalar price. 
 
 
 \section{Model}
 
 \subsection{Construction}
 
-Movie consumers face a discrete choice problem: which of the movies on offer this weekend should they see? Let a movie $i$'s attractiveness at time $t$ be given by some $\delta_{it}$. Consumers receive idiosyncratic demand shocks for each movie, and choose the movie which maximizes their utility. Due to the uniform pricing scheme discussed above, price \emph{does not} enter into the consumer's decision; choices are driven entirely by movie quality and idiosyncratic taste.
+Movie consumers face a discrete choice problem: which of the movies on offer this weekend should they see? Let movie $i$'s attractiveness at time $t$ be given by some $\delta_{it}$. Consumers receive idiosyncratic demand shocks for each movie, and choose the movie which maximizes their utility. Due to the uniform pricing scheme discussed above, price \emph{does not} enter into the consumer's decision; choices are driven entirely by movie quality and idiosyncratic taste.
 
 Aggregating over all consumers, we can express the demand for movie $i$ in week $t$ as a function $\phi$ of the movie's appeal $\delta_{it}$ and the appeal of its competitors $\delta_{-it}$. Again due to the uniform pricing scheme, we can use revenues as a proxy for quantity, since quantity is simply a constant scalar transformation of revenue. Finally, demand for movies varies idiosyncratically by weekend; for example, there is much more demand for movies on Christmas Day than on a random weekend in sunny July. Thus, I include a fixed effect $\alpha_t$ to capture week-by-week variation. I can therefore write the demand for movie $i$ in week $t$ as:
 
 $$\ln(q_{it}) = \phi(\delta_{it}, \delta_{-it}) + \alpha_t$$
 
-A movie's appeal is composed of two parts. First, a fixed effect $\alpha_i$ captures the movie's quality. For example, we would expect \emph{Star Wars} to have a high $\alpha_i$ to capture the fact it is a popular movie in a vacuum separate from its competitors. Second, movies have an age fixed effect $\lambda_{t - r(i)}$. As an experience good, demand for a movie is driven heavily by novelty; thus, the same movie will experience much less demand in its second week than in its first. While we intuitively expect these $\lambda$ to decrease with time, I do not impose this in the model; this will be a test of model fit later on. Finally, I include an idiosyncratic shock $\xi_{it}$ to capture unobserved demand drivers. Thus, the movie's appeal is given by:
+A movie's appeal is composed of two parts. First, a fixed effect $\alpha_i$ captures the movie's quality. For example, we would expect \emph{Star Wars} to have a high $\alpha_i$ to capture the fact it is a popular movie in a vacuum separate from its competitors. Second, movies have an age fixed effect $\lambda_{t - r(i)}$, where $r(i)$ represents movie $i$'s release date. As an experience good, demand for a movie is driven heavily by novelty; thus, the same movie will experience much less demand in its second week than in its first. While it is reasonable to expect these $\lambda$ to decrease with time, I do not impose this; instead, verifying this is true will be a test of model fit later on. Finally, I include an idiosyncratic shock $\xi_{it}$ to capture unobserved demand drivers. Thus, the movie's appeal is given by:
 
 $$\delta_{it} = \alpha_i + \lambda_{t - r(i)} + \xi_{it}$$
 
-Putting these terms into our demand equation, we have:
+Putting these terms into the demand equation, we have:
 
 $$\ln(q_{it}) = \phi(\alpha_i + \lambda_{t - r(i)} + \xi_{it}, \alpha_{-i} + \lambda_{t - r(-i)} + \xi_{-it}) + \alpha_t$$
 
@@ -148,7 +148,7 @@ As written, the model above is difficult to estimate. $\alpha_i$ appears not onl
 
 Thus, conditional on the values of $f(d_{ij})$, each movie's log quantity is a linear function of it and its competitors' fixed effects and ages plus a fixed effect for the relevant weekend plus mean-zero noise. Thus, the $\lambda$ and $\alpha$ coefficients are estimable using OLS.
 
-As an example, consider what our matrix will look like in the following market. Movie 1 released this week. Movie 2 released this week as well, while movie 3 released last week. I omit time fixed effects in this example since we focus on a single period; similarly, I omit time subscripts on the quantities. In this case, we will have the following data matrix where values in ``movie'' columns are used to estimate $\alpha$ values while ``age'' columns are used to estimate $\lambda$ values:
+As an example, consider what the data matrix will look like in the following market. Movie 1 released this week. Movie 2 released this week as well, while movie 3 released last week. I omit time fixed effects in this example since we focus on a single period; similarly, I omit time subscripts on the quantities. In this case, we will have the following data matrix where values in ``movie'' columns are used to estimate $\alpha$ values while ``age'' columns are used to estimate $\lambda$ values:
 
 \begin{center}
 
@@ -169,11 +169,19 @@ $$f(d_{ij}) = \gamma_0 + \gamma_1 d_{ij} + \gamma_2 d_{ij}^2 + \gamma_3 d_{ij}^3
 
 This functional form makes few assumptions about the relationship between distance and substitutability, allowing for flexible sign, monotonicity, and concavity. Thus, if the final result \emph{does} exhibit those properties, we know it is coming from the data rather than baked into the model.
 
-Since the $\lambda$ and $\alpha$ coefficients in the model above interact multiplicatively with the $\gamma$ coefficients in $f$, we cannot estimate $\gamma$ at the same time that we estimate $\lambda$ and $\alpha$ linearly. Instead, I will choose a $\gamma$ coefficient vector and estimate $\lambda$ and $\alpha$ conditional on that $\gamma$ vector using OLS. We know the resulting model minimizes mean squared error \emph{in the set of models using this $\gamma$}. By adjusting the $\gamma$ vector to minimize mean squared error of these optimized models, I search across the lower envelope and know my final model minimizes mean squared error over the whole $\gamma, \alpha, \lambda$ space.
+Since the $\lambda$ and $\alpha$ coefficients in the model above interact multiplicatively with the $\gamma$ coefficients in $f$, we cannot estimate $\gamma$ at the same time that we estimate $\lambda$ and $\alpha$ linearly. Instead, I will choose a $\gamma$ coefficient vector and estimate $\lambda$ and $\alpha$ conditional on that $\gamma$ vector using OLS. We know the resulting model minimizes mean squared error \emph{in the set of models using this $\gamma$}. By adjusting the $\gamma$ vector to minimize mean squared error of these optimized models, I search across the lower envelope and know my final model minimizes mean squared error over the whole $\gamma, \alpha, \lambda$ space. 
 
 Note this optimization is very expensive, as it requires estimating thousands of $\alpha$ coefficients for each interation as well as computing potentially tens of millions of values of $f(d_{ij})$. To speed estimation, I first optimize $\gamma$ using data from 2000 alone (the first ``quality'' year of my data). Conditional on this optimized $\gamma$, I then estimate $\alpha$ and $\lambda$ on all releases from 2000-2019 (omitting 2020 onward due to the COVID-19 pandemic). This allows me to estimate the full model in a reasonable amount of time. In the future, I could potentially run the optimization over the whole dataset using the research computing cluster; however, optimizing on my personal computer is already quite time-consuming even on the small sample.
 
 Traditional standard error methods will struggle here. Since the analytic standard errors on the $\alpha$ and $\lambda$ coefficients do not factor in the uncertainty from the $\gamma$ estimation, they will understate the true uncertainty. I should use bootstrapping to estimate the true standard errors on all three types of coefficients; however, again this is computationally infeasible on my consumer laptop. If I were to run this on the research computing cluster, I could potentially estimate uncertainty on all of these coefficients via bootstrapping. 
+
+\subsection{Application}
+
+In some ways this model is a strange fit for ``characteristic-space'' competition, in that it includes movie fixed effects $\alpha_i$. One of the common virtues of using a characteristic-space model is that it allows us to estimate demand for goods which are not yet in the market by arguing based on similar characteristics. However, the econometrician cannot estimate $\alpha_i$ for a movie which has not yet released.
+
+While this is a limitation, I do not believe it to be as costly as it initially appears. First, as part of estimating the model, I will identify the distribution of $\alpha$ values. Thus, even with no information on a specific $\alpha_i$, it is possible for me to estimate the distribution of outcomes given the possible $\alpha_i$ values, computing both expected values and the variance around these values. 
+
+Moreover, the \emph{additive separability} of the $\alpha$ and $\lambda$ terms goes grants certain counterfactuals extra relevance. Note in the model above $\alpha$ and $\lambda$ never interact multiplicatively. Thus, given competitor similarity $d_{ij}$ and ages $\lambda_{t - r(k)}$, it is possible to perform comparative statics agnostic to the $\alpha$ values. For example, I can ask how demand for movie $i$ will compare if it releases in week 1 rather than week 2 conditional on its competitors. Since the terms containing $\alpha_i$ will be identical in these two scenarios, they drop out and leave a concrete estimate of the change in quantity which is not dependent on the $\alpha_i$ values.
 
 
 \section{Data}
@@ -253,7 +261,7 @@ As a check for the quality of the embeddings, I perform t-Stochastic Neighbor Em
     \end{center}
 \end{table}
 
-Nearest neighbors to some popular movies are visible in table \ref{tab:cosine}. Just by inspection, it is clear this similarity score is capturing \emph{something}: the closest movies to \emph{The Notebook} are other Nicholas Sparks book adaptations, and the closest movies to \emph{A Bug's Life} are \emph{The Ant Bully} and \emph{Antz}. Moreover, the closest neighbors to \emph{Frozen} and \emph{Avengers: Endgame} are in the same franchise: \emph{Frozen II} and \emph{Avengers: Infinity War} respectively. Thus, I feel comfortable using these embeddings to capture similarity between movies.
+Nearest neighbors to some popular movies are visible in table \ref{tab:cosine}. Just by inspection, it is clear this similarity score is capturing \emph{something}: the closest movies to \emph{The Notebook} are other Nicholas Sparks book adaptations, and the closest movies to \emph{A Bug's Life} are \emph{The Ant Bully} and \emph{Antz}. Moreover, the closest neighbors to \emph{Frozen} and \emph{Avengers: Endgame} are in the same franchise: \emph{Frozen II} and \emph{Avengers: Infinity War}, respectively. Thus, I feel comfortable using these embeddings to capture similarity between movies.
 
 \section{Results}
 
@@ -261,37 +269,37 @@ Nearest neighbors to some popular movies are visible in table \ref{tab:cosine}. 
 
 First, let us check the age coefficients $\lambda$. The movie in my sample with the longest run is \emph{My Big Fat Greek Wedding,} which ran for 43 weeks. Estimating a weekly fixed effect for all 43 possible ages would absorb much of my power and create colinearity issues, as few movies reach this age. Instead, I topcode age. Initially I ran the model with a topcode of 26 weeks; however, point estimates converged to be constant after only 9 while the standard errors become quite large. Given this inflection point, I impose a topcode of 9 weeks.
 
-\begin{center}
-    \begin{figure}
+\begin{figure}
+    \begin{center}
         \includegraphics[width=\textwidth]{../elasticity_estimate/output/lambda_coefficients.png}
         \caption{Age Coefficients}
         \label{fig:age_coefs}
-    \end{figure}
-\end{center}
+    \end{center}
+\end{figure}
 
-The estimated $\lambda$ coefficients are visible in figure \ref{fig:age_coefs}. As hypothesized, the age fixed effects decline with time such that new movies are more popular than old ones. Recall that the dependent variable is \emph{log} quantity; thus, the linear decline we observe in the $\lambda$ coefficients implies an exponential decline in sales, as is expected in the film industry. Again, the model does not impose either the sign or the shape of the $\lambda$ coefficients; the fact that they are monotonically decreasing suggests our model is well specified.
+The estimated $\lambda$ coefficients are visible in figure \ref{fig:age_coefs}. As hypothesized, the age fixed effects decline with time such that new movies are more popular than old ones. Recall that the dependent variable is \emph{log} quantity; thus, the linear decline we observe in the $\lambda$ coefficients implies an exponential decline in sales, as is expected in the film industry. Again, the model does not impose either the sign or the shape of the $\lambda$ coefficients; the fact that they are monotonically decreasing suggests my model is well specified.
 
 \subsection{Quality Distribution}
 
-\begin{center}
-    \begin{figure}
+\begin{figure}
+    \begin{center}
         \includegraphics[width=\textwidth]{../elasticity_estimate/output/alpha_coefficients.png}
         \caption{Distribution of $\alpha$ Coefficients}
         \label{fig:alpha_dist}
-    \end{figure}
-\end{center}
+    \end{center}
+\end{figure}
 
 Now we can check the $\alpha$ coefficients. The distribution of $\alpha$ coefficients is visible in figure \ref{fig:alpha_dist}. The distribution is roughly symmetrical with a mean of 0.5. Again recall the log scale of the dependent variable; thus, this distribution implies that the distribution of quality in \emph{levels} is quite skew, again as expected in the film industry. 
 
 \subsection{Elasticity}
 
-\begin{center}
-    \begin{figure}
-        \includegraphics[width=\textwidth]{../elasticity_estimate/output/gamma_zoomed.png}
+\begin{figure}
+    \begin{center}
+        \includegraphics[width=\textwidth]{../elasticity_estimate/output/gamma_zoom_stacked.png}
         \caption{Influence by Distance}
         \label{fig:gamma_zoomed}
-    \end{figure}
-\end{center}
+    \end{center}
+\end{figure}
 
 The impact of competition $f$ is visible in figure \ref{fig:gamma_zoomed}. The curve is plotted over the density of the data; thus, the area over the top of the histogram should be most precisely estimated, while the edges are less precise. I have included the 10th and 90th percentiles of the data for reference; I would suggest focusing on the pattern within this range.
 
@@ -315,7 +323,7 @@ We know the average movie's $\alpha_i$ is roughly 0.5. Similarly, the $\lambda_{
 
 Suppose movie $i$ is attempting to estimate the impact of competitor $j$'s premier, anticipating $j$ is an average movie. If $j$ is in the 90th percentile of similarity to $i$, then $i$'s log quantity would be reduced by $f(d_{ij}) \cdot \delta_{jt} = -0.01 \cdot (0.5 + 2.5) = -0.03$, or roughly 3\%. On the other hand, if $j$ is in the 10th percentile of similarity, $i$'s log quantity would instead by \emph{increased} by $f(d_{ij}) \cdot \delta_{jt} = 0.001 \cdot (0.5 + 2.5) = 0.003$, or roughly 0.3\%. Thus, the presence of the wrong competitor relative to the right one could reasonably lower films' box office revenues by 3.3\%.
 
-To put this magnitude in context, \textcite{follows2016SF} estimates that box office receipt makes up 42\% of a movie's revenue. Further (acknowledging the difficulties of managing so-called ``Hollywood accounting''), he argues that the average film earns a profit of roughly 3.7\%. If a film experiences a 3.3\% decline in 42\% of its revenue, its total revenue falls by 1.3\%. The author documents that the vast majority of a movie's cost is fixed rather than variable; thus, we can assume cost does not change given the presence of competitors. These figures together imply the profit margin in the presence of the additional competitor is only 1.95\%, a 47.3\% reduction in profitability.\footnote{$\frac{R - C}{C} = 0.033 \implies R = 1.033C \implies 0.987 R = 1.0195 C \implies \frac{0.987R - C}{C} = 0.0195 \implies \frac{0.037 - 0.0195}{0.037} = 47.3\%$} 
+To put this magnitude in context, \textcite{follows2016SF,follows2016SFa} estimates that box office receipt makes up 42\% of a movie's revenue. Further (acknowledging the difficulties of managing so-called ``Hollywood accounting''), he argues that the average film earns a profit of roughly 3.7\%. If a film experiences a 3.3\% decline in 42\% of its revenue, its total revenue falls by 1.3\%. The author documents that the vast majority of a movie's cost is fixed rather than variable; thus, we can assume cost does not change given the presence of competitors. These figures together imply the profit margin in the presence of the closer competitor is only 1.95\%, a 47.3\% reduction in profitability.\footnote{$\frac{R - C}{C} = 0.033 \implies R = 1.033C \implies 0.987 R = 1.0195 C \implies \frac{0.987R - C}{C} = 0.0195 \implies \frac{0.037 - 0.0195}{0.037} = 47.3\%$} 
 
 To be even more concrete, let us consider specific movies. Ignoring the $\alpha$ coefficients for each of the following movies, suppose Disney were releasing \emph{Frozen} opposite gory historical action flick \emph{Medieval}: a movie in the bottom decile of cosine similarity to \emph{Frozen}. If Disney were instead facing children's fantasy romp \emph{Inkheart}--a movie in the top decile of similarity to \emph{Frozen}--they would expect a reduction in revenue similar to the one computed above as \emph{Inkheart} pulls away customers \emph{Medieval} would not. 
 
@@ -337,9 +345,9 @@ I implement UV-decomposition for matrix completion as described in \textcite{les
 
 Note that UV decomposition relies on a contraction mapping: for a fixed $V$ matrix, we choose the $U$ matrix which minimizes the sum of squared errors. We then fix that $U$ matrix and choose an optimal $V$ matrix, iterating this process until convergence. This procedure is guaranteed to converge, though it may converge to a local minimum. Thus, we generally initialize the $U$ and $V$ matrices with random values, then run the algorithm multiple times to ensure we find something approximating the global minimum. 
 
-With our decomposition in hand, it is straightforward to assess whether two movies are ``similar:'' we simply compute the cosine similarity of the projected reviews. If two movies have similar projected reviews, we can infer they appeal to similar audiences, and so are likely substitutable. The virtue of UV-decomposition is it works \emph{even when the movies have no reviewers in common}; that is, it can infer similarity between movies which have never been reviewed by the same person.
+With this decomposition in hand, it is straightforward to assess whether two movies are ``similar:'' we simply compute the cosine similarity of the projected reviews. If two movies have similar projected reviews, we can infer they appeal to similar audiences, and so are likely substitutable. The virtue of UV-decomposition is it works \emph{even when the movies have no reviewers in common}; that is, it can infer similarity between movies which have never been reviewed by the same person.
 
-Rather than blindly trusting our decomposition, we can validate it by comparing predicted reviews against actual reviews. I hold out 5\% of the reviews as a test set, then train on the remaining 95\%. If the predicted reviews for this held-out set are highly correlated with the actual reviews, we can be more confident in the UV decomposition.
+Rather than blindly trusting the decomposition, we can validate it by comparing predicted reviews against actual reviews. I hold out 5\% of the reviews as a test set, then train on the remaining 95\%. If the predicted reviews for this held-out set are highly correlated with the actual reviews, we can be more confident in the UV decomposition.
 
 \begin{figure}
     \begin{center}
@@ -353,7 +361,7 @@ As we might expect, the UV decomposition is better at predicting reviews for mov
 
 For any value of the review count threshold, the coefficient on predicted reviews is positive and significant. This suggests that the UV decomposition is quite predictive of a movie's appeal. Moreover, the coefficient is increasing in the review count threshold; that is, the UV decomposition is better at predicting reviews for movies with more reviews. This is as expected; the more data we have on a movie, the better we can predict its appeal.
 
-These results affirm for me that our collaborative filtering results are likely to be quite predictive of a movie's appeal. Thus, if my text-based model identifies the same pairs of movies as substitutable, I can be more confident that the patterns I see reflect consumers' true preferences. 
+These results affirm for me that the collaborative filtering results are likely to be quite predictive of a movie's appeal. Thus, if my text-based model identifies the same pairs of movies as substitutable, I can be more confident that the patterns I see reflect consumers' true preferences. 
 
 Assured that the UV decomposition results are valid, I attempt to predict the cosine similarity of the UV decomposition's predicted reviews using the cosine similarity of the text embeddings. Again we expect the quality of these predictions to vary with the volume of the data; thus, I plot the coefficient of this regression for various thresholds of review count as above. The results of these regressions are visible in figure \ref{fig:uv_threshold}.
 
@@ -365,7 +373,7 @@ Assured that the UV decomposition results are valid, I attempt to predict the co
     \end{center}
 \end{figure}
 
-For movies with relatively few reviews, the coefficient on text similarity is insignificant; this is to be expected, as for these movies UV decomposition struggles to capture anything of meaning. However, as the review count threshold increases, the coefficient on text similarity becomes increasingly positive and significant. This suggests that as UV decomposition becomes more accurate, it looks increasingly like our text-based cosine similarity measure. This is a strong validation of my text-based model; the patterns I see in the text embeddings are not coincidental, but reflect consumers' true preferences. The quality of the match begins to decline when the review threshold becomes too high; however, this is not a fault with my method but with the decomposition, as at these high standards the number of movies with sufficient views falls to less than 10, producing fewer than 100 pairs of movies. 
+For movies with relatively few reviews, the coefficient on text similarity is insignificant; this is to be expected, as for these movies UV decomposition struggles to capture anything of meaning. However, as the review count threshold increases, the coefficient on text similarity becomes increasingly positive and significant. This suggests that as UV decomposition becomes more accurate, it looks increasingly like text-based cosine similarity. This is a strong validation of my text-based model; the patterns I see in the text embeddings are not coincidental, but reflect consumers' true preferences. The quality of the match begins to decline when the review threshold becomes too high; however, this is not a fault with my method but with the decomposition, as at these high standards the number of movies with sufficient views falls to less than 10, producing fewer than 100 pairs of movies. 
 
 \subsection{Topic-Specific PageRank}
 
@@ -395,7 +403,7 @@ A common weakness of collaborative filtering algorithms like TSPR is that they r
 
 This plot shows that the coefficient on text similarity for predicting TSPR is consistently and significantly positive for nearly all thresholds. Thus, the content of the text embeddings \emph{does} seem to have predictive power for which movies are similar based on revealed preference; that is, the patterns I see in the text-based model are not coincidental and reflect consumers' true preferences. 
 
-Moreover, while the number of pairs included remains large enough to have useful confidence intervals, the coefficient is increasing in the threshold value. If we think TSPR increases in quality with data, this suggests that as TSPR becomes higher quality, it looks increasingly like our text-based cosine similarity measure. This exercise highlights an additional strength of my cosine similarity measure; while collaborative filtering needs tens of thousands of reviews per movie to generate useful predictions, the embeddings-based method can generate useful predictions with only a few sentences of text.
+Moreover, while the number of pairs included remains large enough to have useful confidence intervals, the coefficient is increasing in the threshold value. If we think TSPR increases in quality with data, this suggests that as TSPR becomes higher quality, it looks increasingly like text-based cosine similarity. This exercise highlights an additional strength of my cosine similarity measure; while collaborative filtering needs tens of thousands of reviews per movie to generate useful predictions, the embeddings-based method can generate useful predictions with only a few sentences of text.
 
 
 \section{Conclusion}

@@ -212,7 +212,7 @@ def main():
     # Label the genres
     plt.xticks(ticks=range(len(genre_counts)), rotation=45)
 
-    plt.savefig('output/genre_counts.png')
+    plt.savefig('output/genre_counts.png', bbox_inches='tight')
 
     # Clear plot
     plt.clf()
@@ -259,14 +259,11 @@ def main():
     plt.xlabel('Weeks Since Release')
     plt.ylabel('Count')
     plt.title('Histogram of Weeks Since Release')
-    plt.savefig('output/weeks_histogram.png')
+    plt.savefig('output/weeks_histogram.png', bbox_inches='tight')
 
     # Get the movie with the longest run
     longest_run = guru[guru['Weeks'] == guru['Weeks'].max()]
     print(longest_run)
-    kill
-
-
 
     # We want their weeks to also be zero-indexed so we can use it as an index
     guru['Weeks'] = guru['Weeks'] - 1
@@ -398,11 +395,11 @@ def main():
 
     # Add title
     ax1.set_title('Impact over Distance')
+    ax1.set_xlabel('Distance')
     ax2 = ax1.twinx()
 
     # Plot the empirical distances
     ax2.hist(distances, bins=20, alpha=0.5, density=True)
-    ax2.set_xlabel('Distance')
     ax2.set_ylabel('Density of Empirical Distance')
 
     ax1.plot(distance_grid, cross_elasticity, color='orange')
@@ -412,7 +409,7 @@ def main():
     ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
     fig.tight_layout()
-    plt.savefig('output/gamma.png')
+    plt.savefig('output/gamma.png', bbox_inches='tight')
 
     # Zoom in on the cross-elasticity in the support of the data
 
@@ -440,13 +437,13 @@ def main():
     ax1.set_title('Impact over Distance')
 
     ax1.plot(distance_grid, cross_elasticity, color='orange')
+    ax1.set_xlabel('Distance')
     ax1.set_ylabel('Competition Function')
 
     ax2 = ax1.twinx()
 
     # Plot the empirical distances
     ax2.hist(distances, bins=20, alpha=0.5, density=True)
-    ax2.set_xlabel('Distance')
     ax2.set_ylabel('Density of Empirical Distance')
 
     # Add vertical lines at the top and bottom ends
@@ -454,7 +451,38 @@ def main():
     ax2.axvline(x=bottom_end, color='red', linestyle='--')
 
     fig.tight_layout()
-    plt.savefig('output/gamma_zoomed.png')
+    plt.savefig('output/gamma_zoomed.png', bbox_inches='tight')
+
+    # Let's try a stacked plot rather than twin axes
+    plt.clf()
+    fig, axs = plt.subplots(2, sharex=True)
+
+    # Set the x limits
+    axs[0].set_xlim(bottom_end - .2, top_end + .2)
+    axs[1].set_xlim(bottom_end - .2, top_end + .2)
+
+    # Plot the cross-elasticity
+    axs[0].plot(distance_grid, cross_elasticity)
+    axs[0].axhline(y=0, color='grey', linestyle='--')
+    axs[0].set_ylabel('Competition Function')
+    axs[0].set_ylim(min_observed - margin, max_observed + margin)
+
+    # Plot the empirical distances
+    axs[1].hist(distances, bins=20, density=True)
+    axs[1].set_ylabel('Density of Data')
+    axs[1].set_xlabel('Distance')
+
+    # Add vertical lines at the top and bottom ends
+    axs[0].axvline(x=top_end, color='red', linestyle='--')
+    axs[0].axvline(x=bottom_end, color='red', linestyle='--')
+    axs[1].axvline(x=top_end, color='red', linestyle='--')
+    axs[1].axvline(x=bottom_end, color='red', linestyle='--')
+
+    fig.tight_layout()
+    plt.savefig('output/gamma_zoom_stacked.png', bbox_inches='tight')
+
+
+
 
     # Get the age coefficients and errors
     lambda_cols = [colname for colname in optimal_model.params.index if 'lambda' in colname]
@@ -467,7 +495,7 @@ def main():
     plt.xlabel('Weeks Since Release')
     plt.ylabel('Fixed Effect')
     plt.title('Age Fixed Effects')
-    plt.savefig('output/lambda_coefficients.png')
+    plt.savefig('output/lambda_coefficients.png', bbox_inches='tight')
 
 
     # Get the alpha coefficients
@@ -486,9 +514,11 @@ def main():
     # Add a vertical line at the mean
     plt.axvline(x=alpha_values.mean(), color='red', linestyle='--')
     # Print the mean
-    plt.text(alpha_values.mean(), 100, f'Mean: {alpha_values.mean():.2f}', rotation=90)
+    #plt.text(alpha_values.mean(), 100, f'Mean: {alpha_values.mean():.2f}', rotation=90)
+    plt.text(4, 250, f'Mean: {alpha_values.mean():.2f}')
+    plt.text(4, 235, f'SD: {alpha_values.std():.2f}')
 
-    plt.savefig('output/alpha_coefficients.png')
+    plt.savefig('output/alpha_coefficients.png', bbox_inches='tight')
 
 
 
