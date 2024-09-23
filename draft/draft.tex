@@ -6,6 +6,7 @@
 \usepackage{booktabs}
 \usepackage{amsmath}
 \usepackage{appendix}
+\usepackage{hyperref}
 
 % Double space
 \usepackage{setspace}
@@ -27,15 +28,15 @@
 
 \section{Introduction}
 
-Demand estimation methods are central pillars of the economist toolkit, informing antitrust regulation, optimal taxation, and trade policy. However, these approaches are often limited to markets in which goods have quantifiable characteristics such as storage in the market for hard drives or wattage in the market for lightbulbs. Markets with difficult-to-quantify characteristics should not receive less attention simply because they are difficult-to-quantify; though it is hard to put a number on how funny a film is, we understand that a studio monopolizing ``funny'' films is likely to be bad for consumers. Thus, it is important economists develop tools to estimate demand in markets where traditional methods struggle to perform well.
+Demand estimation methods are central to the economist toolkit, informing antitrust regulation, optimal taxation, and trade policy. However, these approaches are often confined to markets in which goods have quantifiable characteristics, such as storage in the market for hard drives or wattage in the market for lightbulbs. Markets with difficult-to-quantify characteristics should not receive less attention simply because they are difficult-to-quantify; though it is hard to put a number on how funny a film is, we understand that a studio monopolizing ``funny'' films is likely to be bad for consumers. Thus, it is important economists develop tools to estimate demand in markets where traditional methods struggle to perform well.
 
-Product-level demand systems such as the Almost Ideal Demand System (AIDS) can estimate rich substitution patterns without any characteristic data by looking only at substitution patterns under variation; that is, the substitution patterns of good $i$ are uninformative about the patterns of good $j$, even if $i$ and $j$ are actually very similar \parencite{deaton1980AER}. These methods often require onerous quantities of data on consumer behavior. For example, estimation of AIDS requires sufficient variation to estimate parameters quadratic in the number of goods. A corollary of this is that these methods require goods to have \emph{already entered the market}. If a firm wishes to estimate substitution for a new product, these methods will have little to offer them.
+Product-level demand systems such as the Almost Ideal Demand System (AIDS) can estimate rich substitution patterns without any characteristic data by looking directly at substitution between each pair of goods $i$ and $j$ \parencite{deaton1980AER}. However, these methods often require onerous quantities of data on consumer behavior; for example, estimation of AIDS requires sufficient variation to estimate parameters quadratic in the number of goods. Moreover, even if goods $i$ and $j$ are very similar, these methods infer nothing about good $j$ from the substitution patterns of good $i$. A corollary of these limitations is that these methods require goods to have \emph{already entered the market}, since without sales data on good $i$ it is impossible to say anything about its substitution patterns. If a firm wishes to estimate substitution for a new product, these methods will have little to offer.
 
 I propose a new method for quantifying product characteristics using text descriptions. By embedding text descriptions of a product in characteristic space, econometricians can identify which products are most similar. Thus, they can predict which products compete most closely with others and estimate how the presence of one product impacts the sales of another. Unlike product-based demand estimation methods, this method can inform research on products which have not yet entered the market, and can fit rich substitution patterns while tuning relatively few parameters.
 
 While this method has broad applicability, I use the film industry as a case study. Film is a natural laboratory for several reasons. First, films have a broad consumer base, such that readers have an intuitive sense whether my method ``makes sense''--even if someone hasn't seen \emph{Spider-Man}, they likely have a sense whether it is more similar to \emph{Man of Steel} or \emph{The Notebook}, and can use this lens to judge my results. Second, film characteristics are often difficult to fit into a traditional econometric framework: while we can easily measure the wattage of a lightbulb, it is much harder to put a number on how funny or violent a film is--and harder still given the lack of clean data. Finally, the film industry has specific market characteristics which make demand estimation using my method straightforward. Uniform pricing shuts down the endogeneous pricing channel of competition, and long production pipelines force studios to choose characteristics without perfect knowledge of their competitors.
 
-Using data from BoxOfficeGuru and TheMovieDB, I estimate the impact of competitor characteristics on film revenue for each weekend from 2000-2019. I find substitution patterns which are plausible in both magnitude and direction, and which are robust to the choice of distance metric. As a film becomes more similar to its competitor, it becomes more and more detrimental to the competitor's revenue. Replacing a competitor in the 10th percentile of similarity with one in the 90th percentile reduces box-office revenue by 3.3\%. Given films' thin profit margins, this is roughly a 47\% decline in profit.
+Using data from BoxOfficeGuru and TheMovieDB, I estimate the impact of competitor similarity on film revenue in North America for each weekend from 2000-2019. I identify substitution patterns which are plausible in both magnitude and direction. As a film becomes more similar to its competitor, it becomes more and more detrimental to the competitor's revenue. Replacing a competitor in the 10th percentile of similarity with one in the 90th percentile reduces box-office revenue by 3.3\%. Given films' thin profit margins, this is roughly a 47\% decline in profit.
 
 \section{Literature}
 
@@ -90,7 +91,7 @@ Given the above, my demand model assumes characteristics are exogeneous. If inst
 
 % This should produce testable hypotheses: conditional on the characteristics of a movie, the characteristics of its competitors should ``look like'' the characteristics of movies releasing in other weekends. One complication to this is we think movies have seasonality, so we can't simply compare movies within the same year in different months. Thus, we'd likely want to compare movies released in July of one specific year against movies released in July of \emph{other} years. This will work less well if movie content shifts significantly over time (for example, if we think there are more superhero movies in the 2010s than in the 2000s). 
 
-One threat to this strategy would be if firms lack flexibility on their films' \emph{content}, but can move the film's release date \emph{forward or backward in time}. If I discover I am releasing my children's movie opposite \emph{Frozen}, I may wish to postpone my release date. This would threaten the assumption of exogeneous characteristics among competitors. I think this is unlikely to be a major concern for a couple of reasons. First, there are certain prime release dates which are likely to be more profitable than others; for example, releasing a family film in November is much better than doing so in January, as you can capture the holiday season. Thus, if a film targeted a holiday release, moving its release date to avoid competition would potentially be quite costly since there no longer exists consumer demand. Second, the continued existence of twin movies further suggests this is not a margin firms seem to adjust significantly on: if studios could easily move release dates to avoid competition, we would expect to see fewer twin movies than we do. 
+One threat to this strategy would be if firms lack flexibility on their films' \emph{content}, but can move the film's release date \emph{forward or backward in time}. If I discover I am releasing my children's movie opposite \emph{Frozen}, I may wish to postpone my release date. This would threaten the assumption of exogeneous characteristics among competitors. I think this is unlikely to be a major concern for a couple of reasons. First, there are certain prime release dates which are likely to be more profitable than others; for example, releasing a family film in November is much better than doing so in January, as you can capture the holiday season. Thus, if a film targeted a holiday release, moving its release date to avoid competition would potentially be quite costly since other weekends face lower demand. Second, the continued existence of twin movies further suggests this is not a margin firms seem to adjust significantly on: if studios could easily move release dates to avoid competition, we would expect to see fewer twin movies than we do. 
 
 \subsection{Uniform Pricing}
 
@@ -106,6 +107,8 @@ Second, I \emph{use revenue as a proxy for quantity.} As described in \textcite{
 \section{Model}
 
 \subsection{Construction}
+
+\label{sec:model_construction}
 
 Consumers face a discrete choice problem: which of the films on offer this weekend should they see? Let film $i$'s attractiveness at time $t$ be given by some $\delta_{it}$. Consumers receive idiosyncratic demand shocks for each film, and choose the option which maximizes their utility. Due to the uniform pricing scheme discussed above, price \emph{does not} enter into the consumer's decision; choices are driven entirely by film quality and idiosyncratic taste.
 
@@ -161,15 +164,15 @@ As an example, consider what the data matrix will look like in the following mar
 
 \end{center}
 
-Regressing quantity on the given Xs identifies the coefficients for $\alpha_1$, $\alpha_2$, $\alpha_3$, $\lambda_0$, and $\lambda_1$ via the first through fifth columns, respectively. These results make some amount of intuitive sense; if $\ln(q_1)$ performs below expectations, one explanation is that $\alpha_2$ is large--represented by a large coefficient on the (negative) $f(d_{12})$.
+Regressing quantity on the given Xs identifies the coefficients for $\alpha_1$, $\alpha_2$, $\alpha_3$, $\lambda_0$, and $\lambda_1$ via the second through sixth columns, respectively. These results make some amount of intuitive sense; if $\ln(q_1)$ performs below expectations, one explanation is that $\alpha_2$ is large--represented by a large coefficient on the (negative) $f(d_{12})$.
 
-Note all the above is taking $f$ as given. Following \textcite{magnolfi2022}, let $f$ be a cubic polynomial in distance; that is:
+Note all the above is taking $f$ as given. Following \textcite{mmagnolfi2024AM}, let $f$ be a cubic polynomial in distance; that is:
 
 $$f(d_{ij}) = \gamma_0 + \gamma_1 d_{ij} + \gamma_2 d_{ij}^2 + \gamma_3 d_{ij}^3$$
 
-This functional form makes few assumptions about the relationship between distance and substitutability, allowing for flexible sign, monotonicity, and concavity. Thus, if the final result \emph{does} exhibit those properties, we know it is coming from the data rather than baked into the model.
+This functional form makes few assumptions about the relationship between distance and substitutability, allowing for flexible sign, monotonicity, intercept, level, and concavity. Thus, if the final result \emph{does} exhibit those properties, we know they are coming from the data rather than baked into the model.
 
-Since the $\lambda$ and $\alpha$ coefficients in the model above interact multiplicatively with the $\gamma$ coefficients in $f$, we cannot estimate $\gamma$ at the same time that we estimate $\lambda$ and $\alpha$ linearly. Instead, I will choose a $\gamma$ coefficient vector and estimate $\lambda$ and $\alpha$ conditional on that $\gamma$ vector using OLS. We know the resulting model minimizes mean squared error \emph{in the set of models using this $\gamma$}. By adjusting the $\gamma$ vector to minimize mean squared error of these optimized models, I search across the lower envelope and know my final model minimizes mean squared error over the whole $\gamma, \alpha, \lambda$ space. 
+Since the $\lambda$ and $\alpha$ coefficients in the model above interact multiplicatively with the $\gamma$ coefficients in $f$, we cannot estimate $\gamma$ at the same time that we estimate $\lambda$ and $\alpha$ linearly. Instead, I will choose a $\gamma$ coefficient vector and estimate $\lambda$ and $\alpha$ conditional on that $\gamma$ vector using OLS. We know the resulting model minimizes mean squared error \emph{in the set of models using this $\gamma$}. By adjusting the $\gamma$ vector to minimize mean squared error of these optimized models, I search across the lower envelope and know my final model minimizes mean squared error over the whole $(\gamma, \alpha, \lambda)$ space. 
 
 Note this optimization is very expensive, as it requires estimating thousands of $\alpha$ coefficients for each interation as well as computing potentially tens of millions of values of $f(d_{ij})$. To speed estimation, I first optimize $\gamma$ using data from 2000 alone (the first ``quality'' year of my data). Conditional on this optimized $\gamma$, I then estimate $\alpha$ and $\lambda$ on all releases from 2000-2019 (omitting 2020 onward due to the negative impact of the COVID-19 pandemic). This allows me to estimate the full model in a reasonable amount of time. In the future, I could potentially run the optimization over the whole dataset using the research computing cluster; however, optimizing on my personal computer is already quite time-consuming even on the small sample.
 
@@ -203,7 +206,7 @@ While BoxOfficeGuru was getting its footing in the late 1990s, their reports wer
 
 I retrieve film characteristics from the API of TheMovieDB, a user-generated database of films. Specifically, I clean film names and years retrieved from BoxOfficeGuru and query the search API for the top result released in the relevant year. For each film, I can thus retrieve the description, genres, and original release language. Example film descriptions are visible in table \ref{tab:tmdb_desc}.
 
-TMDB also lists the primary language of each film. I limit only to films originally released in English to avoid both non-English film descriptions and differential sales trends among non-English speaking consumers. In total, my sample contains 2,970 films over the 20 year span matched between BoxOfficeGuru and TheMovieDB.
+TheMovieDB also lists the primary language of each film. I limit only to films originally released in English to avoid both non-English film descriptions and differential sales trends among non-English speaking consumers. In total, my sample contains 2,970 films over the 20 year span matched between BoxOfficeGuru and TheMovieDB.
 
 \begin{table}
     \begin{tabular}{lp{11cm}}
@@ -222,17 +225,17 @@ TMDB also lists the primary language of each film. I limit only to films origina
 
 \section{Text Embeddings}
 
-I use OpenAI's embedding model \texttt{text-embedding-3-small} API to embed film descriptions. This produces a 1,536-dimensional vector for each film description. The OpenAI embedding procedure trains a transformer to predict adjacent texts based on a large corpus, such that vectors with similar cosine similarity are likely to have similar next words \parencite{neelakantan2022ao, kusupati2022ao}.
+I use OpenAI's embedding model \texttt{text-embedding-3-small} API to embed film descriptions. This produces a 1,536-dimensional vector for each film description. The OpenAI embedding procedure trains a transformer to predict adjacent texts based on a large corpus, such that vectors with similar cosine similarity are likely to have similar next words \parencite{neelakantan2022ao, kusupati2022ao}. These embeddings are quite cheap; the bill for this project was less than \$1. Thus, this method should be accessible to researchers with any level of resources even for projects of significant scale.
 
 I prefer the OpenAI embeddings to other text-as-data methods for a few reasons. First, film descriptions are quite terse; most are around a paragraph, with a few as short as one or two sentences. Thus, traditional bag of words methods are likely to suffer, as word or bigram counts would be remarkably sparse. Because the OpenAI embedding model is trained on an enormous corpus of text, it can infer when descriptions are similar even when they share \emph{no} words--for example, a film about ``wizardry'' would be similar to one about ``sorcery,'' which would not be true under a bag of words model \parencite{brown2020a}.
 
-Secondly, BERT embeddings tend to function at the sentence level (and word2vec embeddings function only at the word level), while the OpenAI embeddings are generally more context-aware. Given the film descriptions tend to be longer than a single sentence, I believe the OpenAI embeddings are likely to be more able to capture the full context of the film description.
+Second, BERT embeddings tend to function at the sentence level (and word2vec embeddings function only at the word level), while the OpenAI embeddings are generally more context-aware. Given the film descriptions tend to be longer than a single sentence, I believe the OpenAI embeddings are likely to be more able to capture the full context of the film description.
 
 % In the long run I will likely want to use \texttt{text-embedding-3-large} for better performance. For exploratory purposes, I use the smaller model due to cost; the large model costs roughly 10x as much as the small model, though produces a 3,072-dimensional embedding.
 
 \subsection{Quality Check: Genre}
 
-As a check for the quality of the embeddings, I perform t-Stochastic Neighbor Embedding (t-SNE) on the embeddings to reduce them to two dimensions and emphasize clustering. For each film, I identify the first genre listed on the TMDB page. When running t-SNE I limit to only the four most popular genres (action, drama, comedy, and horror) to keep the figure legible. Embeddings do cluster by genre, as visible in figure \ref{fig:tsne}. Generally we see comedies visible on the left, while actions are on the right and horrors are at the top (admittedly, the nebulous ``drama'' genre is more diffuse).
+As a check for the quality of the embeddings, I perform t-Stochastic Neighbor Embedding (t-SNE) on the embeddings to reduce them to two dimensions and emphasize clustering. For each film, I identify the first genre listed on the TheMovieDB page. When running t-SNE I limit to only the four most popular genres (action, drama, comedy, and horror) to keep the figure legible. Embeddings do cluster by genre, as visible in figure \ref{fig:tsne}. Generally we see comedies visible on the left, while actions are on the right and horrors are at the top (admittedly, the nebulous ``drama'' genre is more diffuse).
 
 \begin{figure}
     \includegraphics[width=\textwidth]{../tmdb/plots/tsne_genres.png}
@@ -267,7 +270,7 @@ Nearest neighbors to some popular films are visible in table \ref{tab:cosine}. J
 
 \subsection{Age}
 
-First, let us check the age coefficients $\lambda$. The film in my sample with the longest run is \emph{My Big Fat Greek Wedding,} which ran for 43 weeks. Estimating a weekly fixed effect for all 43 possible ages would absorb much of my power and create colinearity issues, as few films reach this age. Instead, I topcode age. Initially I ran the model with a topcode of 26 weeks; however, point estimates converged to be constant after only 9 while the standard errors become quite large. Given this inflection point, I impose a topcode of 9 weeks.
+First, I examine the age coefficients $\lambda$. The film in my sample with the longest run is \emph{My Big Fat Greek Wedding,} which ran for 43 weeks. Estimating a weekly fixed effect for all 43 possible ages would absorb much of my power and create colinearity issues, as few films reach this age. Instead, I topcode age. Initially I ran the model with a topcode of 26 weeks; however, point estimates converged to be constant after only 9 while the standard errors become quite large. Given this inflection point, I impose a topcode of 9 weeks.
 
 \begin{figure}
     \begin{center}
@@ -277,7 +280,7 @@ First, let us check the age coefficients $\lambda$. The film in my sample with t
     \end{center}
 \end{figure}
 
-The estimated $\lambda$ coefficients are visible in figure \ref{fig:age_coefs}. As hypothesized, the age fixed effects decline with time such that new films are more popular than old ones. Recall that the dependent variable is \emph{log} quantity; thus, the linear decline we observe in the $\lambda$ coefficients implies an exponential decline in sales, as is expected in the film industry. Again, the model does not impose either the sign or the shape of the $\lambda$ coefficients; the fact that they are monotonically decreasing suggests my model is well specified.
+The estimated $\lambda$ coefficients are visible in figure \ref{fig:age_coefs}. As hypothesized, the age fixed effects decline with time such that new films are more popular than old ones. Recall that the dependent variable is \emph{log} quantity; thus, the linear decline we observe in the $\lambda$ coefficients implies an exponential decline in sales, as is expected in the film industry. Again, the model does not impose either the sign or the shape of the $\lambda$ coefficients; the fact that they are monotonically decreasing at a linear rate suggests my model is well specified.
 
 \subsection{Quality Distribution}
 
@@ -289,7 +292,7 @@ The estimated $\lambda$ coefficients are visible in figure \ref{fig:age_coefs}. 
     \end{center}
 \end{figure}
 
-Now we can check the $\alpha$ coefficients. The distribution of $\alpha$ coefficients is visible in figure \ref{fig:alpha_dist}. The distribution is roughly symmetrical with a mean of 0.5. Again recall the log scale of the dependent variable; thus, this distribution implies that the distribution of quality in \emph{levels} is quite skew, again as expected in the film industry. 
+Now I check the distribution of $\alpha$ coefficients, visible in figure \ref{fig:alpha_dist}. The distribution is roughly symmetrical with a mean of 0.5. Again recall the log scale of the dependent variable; thus, this distribution implies that the distribution of quality in \emph{levels} is quite skew, again as expected in the film industry. 
 
 \subsection{Elasticity}
 
@@ -335,9 +338,7 @@ A skeptic might argue the patterns I see are merely coincidental: why would we b
 
 ``Recommendation engines'' are a common tool in the tech world used to predict what products a user will like. We can think of this project as harnessing a new type of recommendation engine, identifying films which are likely to be substitutable based on their descriptions. Algorithms in this space are broadly divided into two categories: collaborative filtering and content-based filtering. The text embeddings used above are a form of content-based filtering: using the ``content'' of the film (its text description) to predict its appeal. However, one way to benchmark the quality of this approach is to compare against a \emph{collaborative} filtering algorithm. Unlike content-based filtering, collaborative filtering doesn't include any information about the content of a film; instead, it uses the preferences of other users to predict what a user will like. For example, if I like \emph{The Dark Knight}, and most people who like \emph{The Dark Knight} also like \emph{Inception}, a collaborative filtering algorithm would predict I would like \emph{Inception}. 
 
-\textcite{harper2016ATIIS} provide a public-use dataset of real film reviews (``MovieLens''); it contains more than 25 million 1-to-5 star reviews of films by users. Moreover, films are tagged with their TMDB ID; that is, the same ID I use to collect film descriptions. Thus, for any given pair of films, I can compute similarity under both the text-based and collaborative filtering methods. If the two measures are correlated, I can be more confident that the patterns I see in the text-based model are not coincidental. I validate my text-based model by comparing it against two frontier collaborative filtering algorithms: UV decomposition and topic-specific PageRank.
-
-\pagebreak
+\textcite{harper2016ATIIS} provide a public-use dataset of real film reviews (``MovieLens''); it contains more than 25 million 1-to-5 star reviews of films by users. Moreover, films are tagged with their TheMovieDB ID; that is, the same ID I use to collect film descriptions. Thus, for any given pair of films, I can compute similarity under both the text-based and collaborative filtering methods. If the two measures are correlated, I can be more confident that the patterns I see in the text-based model are not coincidental. I validate my text-based model by comparing it against two frontier collaborative filtering algorithms: UV decomposition and topic-specific PageRank.
 
 \subsection{UV Decomposition}
 
@@ -357,11 +358,11 @@ Rather than blindly trusting the decomposition, we can validate it by comparing 
     \end{center}
 \end{figure}
 
-As we might expect, the UV decomposition is better at predicting reviews for films with more reviews. To assess the size of this effect, I regress the true review on the predicted review for various thresholds of review count. If the threshold is low, we're including films with fewer reviews in our prediction set; if the threshold is high, we're looking only at hits like \emph{Star Wars.} The results of these regressions are visible in figure \ref{fig:uv_threshold}.
+As we might expect, the UV decomposition is better at predicting reviews for films with more reviews. To assess the size of this effect, I regress the true review on the predicted review for various thresholds of review count. If the threshold is low, we're including films with fewer reviews in our prediction set; if the threshold is high, we're looking only at hits like \emph{Star Wars.} The results of these regressions are visible in figure \ref{fig:actual_vs_predicted}.
 
 For any value of the review count threshold, the coefficient on predicted reviews is positive and significant. This suggests that the UV decomposition is quite predictive of a film's appeal. Moreover, the coefficient is increasing in the review count threshold; that is, the UV decomposition is better at predicting reviews for films with more reviews. This is as expected; the more data we have on a film, the better we can predict its appeal.
 
-These results affirm for me that the collaborative filtering results are likely to be quite predictive of a film's appeal. Thus, if my text-based model identifies the same pairs of films as substitutable, I can be more confident that the patterns I see reflect consumers' true preferences. 
+These results affirm that the collaborative filtering estimates are likely to be quite predictive of a film's appeal. Thus, if my text-based model identifies the same pairs of films as substitutable, I can be more confident that the patterns I see reflect consumers' true preferences. 
 
 Assured that the UV decomposition results are valid, I attempt to predict the cosine similarity of the UV decomposition's predicted reviews using the cosine similarity of the text embeddings. Again we expect the quality of these predictions to vary with the volume of the data; thus, I plot the coefficient of this regression for various thresholds of review count as above. The results of these regressions are visible in figure \ref{fig:uv_threshold}.
 
@@ -377,7 +378,7 @@ For films with relatively few reviews, the coefficient on text similarity is ins
 
 \subsection{Topic-Specific PageRank}
 
-Harnessing the bipartite network nature of the reviews data, I use a topic-specific PageRank (TSPR) algorithm to compute similarity between each pair of films, as implemented by \textcite{sajani2023}. PageRank is an algorithm for detecting the most important nodes in a network; it was originally developed by Google to rank webpages. The algorithm works by randomly walking through the network, with a probability of jumping to a random node at each step. The importance of a node is the proportion of time the random walker spends at that node. TSPR is an extension of the algorithm which always ``jumps'' to a specific set of nodes rather than a random node.
+As a second validation, I harness the bipartite network nature of the reviews data. Using topic-specific PageRank (TSPR) as implemented by \textcite{sajani2023}, I compute a second review-based similarity between each pair of films. PageRank is an algorithm for detecting the most important nodes in a network; it was originally developed by Google to rank webpages. The algorithm works by randomly walking through the network, with a probability of jumping to a random node at each step. The importance of a node is the proportion of time the random walker spends at that node. TSPR is an extension of the algorithm which always ``jumps'' to a specific set of nodes rather than a random node.
 
 For my application, I implement TSPR as follows. To find films similar to specific film $x$:
 \begin{itemize}
@@ -414,8 +415,8 @@ Two frontier collaborative filtering algorithms, UV decomposition and topic-spec
 
 Films with similar descriptions are indeed substitutes; moreover, substitutability falls as distance in characteristic space increases. My magnitudes are large but reasonable; changing one competitor film from the bottom decile of similarity to the top decile can reduce revenue by 3.3\%, decreasing total profitability by 47\%. 
 
-% \section*{Acknowledgments}
-% Thank you to Liran Einav and Shoshana Vasserman for their support both in and after IO III. Thanks also to Arun Chandrasekhar, Nick Bloom, Janet Stefanov, Nick Scott-Hearn, and Lauren Harris for their feedback on this project, as well as the rest of the 2024 IO III class.
+\section*{Acknowledgments}
+Thank you to Liran Einav and Shoshana Vasserman for their support both in and after Industrial Organization III. Thanks also to Janet Stefanov, Nick Scott-Hearn, and Lauren Harris for their feedback on this project, as well as the rest of the 2024 Industrial Organization III class.
 
 \printbibliography
 
@@ -426,7 +427,7 @@ Films with similar descriptions are indeed substitutes; moreover, substitutabili
 \section{Rearranging the Model}
 \label{app:rearrangement}
 
-Let us start with the expression of the model as given in the model construction section: $$\ln(q_{it}) = \alpha_i + \lambda_{t - r(i)} + \xi_{it} + \sum_{j \neq i} f(d_{ij}) (\alpha_j + \lambda_{t - r(j)} + \xi_{jt}) + \alpha_{t}$$
+Let us start with the expression of the model as given in section \ref{sec:model_construction} (``Construction''): $$\ln(q_{it}) = \alpha_i + \lambda_{t - r(i)} + \xi_{it} + \sum_{j \neq i} f(d_{ij}) (\alpha_j + \lambda_{t - r(j)} + \xi_{jt}) + \alpha_{t}$$
 
 From there, we can rearrange the right side one small step at a time:
 \begin{align*}
@@ -471,7 +472,7 @@ $$U^* = MV'(VV')^{-1} \qquad V^* = (U'U)^{-1}U'M$$
 
 By generating random starting $U$ and $V$, we can iterate this process until convergence to find (locally) optimal $U$ and $V$ matrices.
 
-These matrix forms are particularly appealing since they highlight the procedure's implicit relation to linear regression. Philosophically, we are searching for $d$ latent characteristics of each film (corresponding to rows of $V$) and the analogous coefficients on these characteristics which define each user's taste (corresponding to rows of $U$) such that the coefficient-characteristic pair justify the existing reviews. From there, we can extrapolate to missing films by simply multiplying the latent characteristics by the coefficients for each missing user. Note since the problem is symmetric we could just as easily say the latent values for users are the ``characteristics'' and the values for films are ``coefficients,'' but I prefer to think of films as more easily defined by a finite set of characteristics than users.
+These matrix forms are particularly appealing since they highlight the procedure's implicit relation to linear regression. Philosophically, we are searching for $d$ latent characteristics of each film (corresponding to rows of $V$) and the analogous coefficients on these characteristics which define each user's taste (corresponding to rows of $U$) such that the coefficient-characteristic pair justify the existing reviews. From there, we can interpolate missing films by simply multiplying the latent characteristics by the coefficients for each missing user. Note since the problem is symmetric we could just as easily say the latent values for users are the ``characteristics'' and the values for films are ``coefficients,'' but I prefer to think of films as more easily defined by a finite set of characteristics than users.
 
 \end{appendices}
 
