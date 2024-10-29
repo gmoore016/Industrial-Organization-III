@@ -74,6 +74,52 @@ def get_neighbors(example, distances, tmdb, movie_ids):
         print(f'{closest_movie_name}: {closest_distance}')
         distances_from_top_decile[closest_index] = np.inf
 
+def compute_model_parameters(guru, movie_id_to_index, date_movie_dict, distances):
+        """
+        Computes optimal model parameters through two-stage minimization process.
+        First finds approximate parameters on small sample, then refines on full sample.
+        
+        Args:
+            guru (pd.DataFrame): Full dataset
+            movie_id_to_index (dict): Mapping of movie IDs to indices
+            date_movie_dict (dict): Pre-computed movie data by date
+            distances (np.array): Distance matrix between movies
+            
+        Returns:
+            tuple: Optimal parameters (gamma) and fitted model
+        """
+        print("Minimizing...")
+
+        # For initial search, limit only to one year
+        sample_guru = guru[guru['Date'].dt.year == 2000]
+
+        # The minimiziation process is expensive; thus, 
+        # we get "close" to the optimum with a small sample, then
+        # use that as the initial guess for the full sample
+        initial_minimization = minimize(
+            fun = compute_model_error, 
+            x0 = INITIAL_GUESS,
+            args = (sample_guru, movie_id_to_index, date_movie_dict, distances),
+        )
+
+        # Get the optimal age coefficients
+        gamma_star = initial_minimization.x
+
+        final_minimization = minimize(
+            fun = compute_model_error,
+            x0 = gamma_star,
+            args = (guru, movie_id_to_index, date_movie_dict, distances),
+        )
+
+        gamma_star = final_minimization.x
+
+        print("Initial Minimiziation Complete!")
+
+        optimal_model = regress_given_gamma(gamma_star, guru, movie_id_to_index, date_movie_dict, distances)
+        
+        return gamma_star, optimal_model
+
+
 def regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distances):
     """Function for nonlinear optimization of age coefficients"""
 
@@ -83,8 +129,6 @@ def regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distanc
     cubic = lambda x: gamma[0] + gamma[1] * x + gamma[2] * x ** 2 + gamma[3] * x ** 3
 
     rows = []
-
-    print("Constructing Data...")
 
     for row in guru.itertuples():
         # Get the movie's date and id
@@ -143,8 +187,6 @@ def regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distanc
     # Define the regression formula
     reg_formula = 'ln_earnings ~ ' + ' + '.join(alpha_cols) + ' + ' + ' + '.join(lambda_cols) + ' + TimeEffects'
 
-    print("Regressing...")
-
     reg = lm.PanelOLS.from_formula(formula=reg_formula, data=regression_df, drop_absorbed=True)
 
     results = reg.fit(low_memory=False)
@@ -159,9 +201,6 @@ def compute_model_error(gamma, guru, movie_id_to_index, date_movie_dict, distanc
 
     residuals = model.resids
     rmse = np.sqrt(np.mean(residuals ** 2))
-
-    print(f'Gamma: {gamma}')
-    print(f'RMSE: {rmse}')
 
     return rmse
 
@@ -319,69 +358,58 @@ def main():
     #p = pstats.Stats('output/profile.prof')
     #p.strip_dirs().sort_stats('cumulative').print_stats(10)
 
-    # I COULD RANDOMLY HOLD OUT SOME MOVIES AND SEE IF I CAN PREDICT THEM?
-    # WOULD REQUIRE LOSING MOVIE FIXED EFFECTS
-    # SIMILARLY COULD HOLD OUT SOME WEEKENDS
-    # WOULD NOT REQUIRE HOLDOUT IF I STILL COUNT THEM AS "PRESENT" FOR THEIR NEIGHBORS,
-    # BUT DON'T INCLUDE THEM IN THE REGRESSION DIRECTLY. MAY BE WEIRD?
+    # Compute the model parameters using the true data
+    gamma_star, optimal_model = compute_model_parameters(guru, movie_id_to_index, date_movie_dict, distances)
 
-    #compute_model_error(INITIAL_GUESS, guru, movie_id_to_index, date_movie_dict, distances)
+    # Bootstrap to get confidence intervals
+    print("\nBootstrapping to get confidence intervals...")
+    
+    n_bootstrap = 2
+    bootstrap_gammas = []
+    bootstrap_models = []
+    # Get unique dates for sampling
+    unique_dates = pd.Series(list(date_movie_dict.keys()))
+    
+    for i in range(n_bootstrap):
+        print(f"\nBootstrap iteration {i+1}/{n_bootstrap}")
+        
+        # Sample dates with replacement
+        sampled_dates = unique_dates.sample(n=len(unique_dates), replace=True)
+        
+        # Get the bootstrap sample
+        bootstrap_guru = guru[guru['Date'].isin(sampled_dates)]
+        
+        # Compute parameters on bootstrap sample
+        try:
+            bootstrap_gamma, bootstrap_model = compute_model_parameters(
+                bootstrap_guru, 
+                movie_id_to_index,
+                date_movie_dict,
+                distances
+            )
+            bootstrap_gammas.append(bootstrap_gamma)
+            bootstrap_models.append(bootstrap_model)
+        except:
+            print(f"Failed on bootstrap iteration {i+1}")
+            continue
 
+    # Plot results
+    distance_grid = np.linspace(0, 1, 100)
 
+    bootstrap_cross_elasticities = []
+    for bootstrap_gamma in bootstrap_gammas:
+        bootstrap_cubic = lambda x: bootstrap_gamma[0] + bootstrap_gamma[1] * x + bootstrap_gamma[2] * x ** 2 + bootstrap_gamma[3] * x ** 3
 
-    # Optimize the age coefficients
-    print("Minimizing...")
+        bootstrap_cross_elasticity = bootstrap_cubic(distance_grid)
+        bootstrap_cross_elasticities.append(bootstrap_cross_elasticity)
 
-    # For initial search, limit only to one year
-    sample_guru = guru[guru['Date'].dt.year == 2000]
-
-    # The minimiziation process is expensive; thus, 
-    # we get "close" to the optimum with a small sample, then
-    # use that as the initial guess for the full sample
-    '''
-    initial_minimization = minimize(
-        fun = compute_model_error, 
-        x0 = INITIAL_GUESS,
-        args = (sample_guru, movie_id_to_index, date_movie_dict, distances),
-    )
-
-    # Get the optimal age coefficients
-    gamma_star = initial_minimization.x
-
-
-
-    final_minimization = minimize(
-        fun = compute_model_error,
-        x0 = gamma_star,
-        args = (guru, movie_id_to_index, date_movie_dict, distances),
-    )
-
-    gamma_star = final_minimization.x
-    '''
-    gamma_star = [0.332, -1.903, 3.298, -1.796]
-
-    print("Initial Minimiziation Complete!")
-
-    optimal_model = regress_given_gamma(gamma_star, guru, movie_id_to_index, date_movie_dict, distances)
-
-    print(gamma_star)
-
-    '''
-    stargazer = Stargazer([optimal_model])
-    stargazer.covariate_order(['lambda_0', 'lambda_1', 'lambda_2', 'lambda_3'])
-    stargazer.add_custom_notes([
-        "Omitting movie age, movie, and date fixed effects for brevity"
-    ])
-    latex = stargazer.render_latex(
-        escape=True,
-        only_tabular=True,
-    )
-    with open('output/cosine_regression.tex', 'w') as f:
-        f.write(latex)
-    '''
+    # For each point on the grid, compute the 95% CI
+    bootstrap_cross_elasticities = np.array(bootstrap_cross_elasticities)
+    lower_bounds = np.percentile(bootstrap_cross_elasticities, 2.5, axis=0)
+    upper_bounds = np.percentile(bootstrap_cross_elasticities, 97.5, axis=0)
 
     # Plot cross-elasticities over distance
-    distance_grid = np.linspace(0, 1, 100)
+
     cross_elasticity = gamma_star[0] + gamma_star[1] * distance_grid + gamma_star[2] * distance_grid ** 2 + gamma_star[3] * distance_grid ** 3
 
     bottom_index = np.argmin(np.abs(distance_grid - bottom_end))
@@ -404,6 +432,8 @@ def main():
 
     ax1.plot(distance_grid, cross_elasticity, color='orange')
     ax1.set_ylabel('Competition Function')
+
+    ax1.fill_between(distance_grid, lower_bounds, upper_bounds, color='blue', alpha=0.2)
 
     ax2.axvline(x=top_end, color='red', linestyle='--')
     ax2.axvline(x=bottom_end, color='red', linestyle='--')
