@@ -18,6 +18,8 @@ WEEK_THRESHOLD = 9
 # Initial guess for gamma
 INITIAL_GUESS = np.array([1, .1, .01, .001])
 
+# Number of bootstrap iterations
+N_BOOTSTRAP = 100
 
 def get_neighbors(example, distances, tmdb, movie_ids):
     '''
@@ -373,14 +375,13 @@ def main():
     # Bootstrap to get confidence intervals
     print("\nBootstrapping to get confidence intervals...")
     
-    n_bootstrap = 2
     bootstrap_gammas = []
     bootstrap_models = []
     # Get unique dates for sampling
     unique_dates = pd.Series(list(date_movie_dict.keys()))
     
-    for i in range(n_bootstrap):
-        print(f"\nBootstrap iteration {i+1}/{n_bootstrap}")
+    for i in range(N_BOOTSTRAP):
+        print(f"\nBootstrap iteration {i+1}/{N_BOOTSTRAP}")
         
         # Sample dates with replacement
         sampled_dates = unique_dates.sample(n=len(unique_dates), replace=True)
@@ -416,6 +417,8 @@ def main():
     bootstrap_cross_elasticities = np.array(bootstrap_cross_elasticities)
     lower_bounds = np.percentile(bootstrap_cross_elasticities, 2.5, axis=0)
     upper_bounds = np.percentile(bootstrap_cross_elasticities, 97.5, axis=0)
+    assert lower_bounds.shape == distance_grid.shape
+    assert upper_bounds.shape == distance_grid.shape
 
     # Plot cross-elasticities over distance
 
@@ -478,6 +481,8 @@ def main():
     ax1.plot(distance_grid, cross_elasticity, color='orange')
     ax1.set_xlabel('Distance')
     ax1.set_ylabel('Competition Function')
+
+    ax1.fill_between(distance_grid, lower_bounds, upper_bounds, color='blue', alpha=0.2)
 
     ax2 = ax1.twinx()
 
