@@ -105,6 +105,9 @@ def compute_model_parameters(guru, movie_id_to_index, date_movie_dict, distances
         # Get the optimal age coefficients
         gamma_star = initial_minimization.x
 
+        print("Initial Minimiziation Complete!")
+
+        '''
         final_minimization = minimize(
             fun = compute_model_error,
             x0 = gamma_star,
@@ -113,7 +116,10 @@ def compute_model_parameters(guru, movie_id_to_index, date_movie_dict, distances
 
         gamma_star = final_minimization.x
 
-        print("Initial Minimiziation Complete!")
+        print("Secondary Minimization Complete!")
+        '''
+
+        
 
         optimal_model = regress_given_gamma(gamma_star, guru, movie_id_to_index, date_movie_dict, distances)
         
@@ -127,6 +133,10 @@ def regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distanc
 
     # Define cubic dependant on gamma
     cubic = lambda x: gamma[0] + gamma[1] * x + gamma[2] * x ** 2 + gamma[3] * x ** 3
+
+    # Pre-compute each pair of distances
+    fs_of_distances = cubic(distances)
+
 
     rows = []
 
@@ -156,11 +166,10 @@ def regress_given_gamma(gamma, guru, movie_id_to_index, date_movie_dict, distanc
         competitor_ages = date_movies['Weeks'].values
         competitor_indices = np.array([movie_id_to_index[competitor_id] for competitor_id in competitor_ids])
 
-        # CAN I PRE-COMPUTE THIS ONCE AT THE START OF THE FUNCTION, RATHER THAN RE-DOING IT FOR EACH ROW?
-        fs_of_distances = cubic(distances[movie_index, competitor_indices])
+        cross_functions = fs_of_distances[movie_index, competitor_indices]
         
-        alpha_vals[competitor_indices] += fs_of_distances
-        lambda_vals[competitor_ages] += fs_of_distances
+        alpha_vals[competitor_indices] += cross_functions
+        lambda_vals[competitor_ages] += cross_functions
 
         row = np.concatenate((alpha_vals, lambda_vals, [date, ln_earnings, movie_id]))
         rows.append(row)
